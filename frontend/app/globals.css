@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+:root { --bg:#0d1117; --panel:#161d26; --panel2:#1c2633; --line:#2c3a4a; --text:#edf2f7; --muted:#a7b4c2; --amber:#f2c14e; --red:#e4572e; --teal:#2a9d8f; --grey:#8b98a8; }
+body { margin:0; font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--text); }
+input,button,select { font:inherit; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; box-shadow:0 12px 28px rgba(0,0,0,.35); }
+.thumb { width:100%; border-radius:6px; display:block; }
+.pin { position:relative; width:30px; height:30px; border-radius:50% 50% 50% 6px; transform:rotate(-45deg); border:2px solid #0d1117; cursor:pointer; box-shadow:0 8px 16px rgba(0,0,0,.55); display:grid; place-items:center; }
+.pin span { transform:rotate(45deg); font-weight:800; font-size:12px; color:#0d1117; }
+.pin::after { content:""; position:absolute; bottom:-9px; left:50%; width:14px; height:5px; margin-left:-7px; border-radius:50%; background:rgba(0,0,0,.5); filter:blur(2px); }
+.chip { border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:999px; padding:6px 11px; cursor:pointer; font-size:12px; }
+.chip[aria-pressed="true"] { background:var(--amber); color:#14100a; border-color:var(--amber); font-weight:700; }
+.bar-track { background:#0a0e13; border-radius:4px; height:7px; overflow:hidden; }
+.bar-fill { height:100%; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
