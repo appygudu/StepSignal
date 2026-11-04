@@ -94,8 +94,72 @@ def report():
         coverage_note=d["coverage_note"], counts=d["counts"], summary=summary,
         warnings=d.get("warnings", []), integrations=integrations())
 
+ANALYSIS_VERSION = "v2"
+
+def _cache_key(image_id): return f"{ANALYSIS_VERSION}:{image_id}"
+
+@app.post("/api/stage/route")
+def stage_route(req: BriefRequest):
+    """Stage 1 (fast): routing + sampling only. No imagery, no AI calls."""
+    import time; t0 = time.perf_counter()
+    try:
+        olat, olon, olabel = parse_place(req.origin)
+        dlat, dlon, dlabel = parse_place(req.destination)
+        routes = get_route((olat, olon), (dlat, dlon))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    m = routes[0]; samples = sample_every(m["geometry"]["coordinates"], 50.0)
+    return {"origin_label": olabel, "destination_label": dlabel, "distance_m": m["distance"],
+            "duration_min": round(m["duration"]/60, 1),
+            "route_geojson": {"type": "Feature", "geometry": m["geometry"], "properties": {}},
+            "alternate_geojson": {"type": "Feature", "geometry": routes[1]["geometry"], "properties": {}} if len(routes) > 1 else None,
+            "samples": [{"index": i, "lat": la, "lon": lo} for i, (la, lo) in enumerate(samples)],
+            "timings": {"routing_s": round(time.perf_counter()-t0, 2)}}
+
+from pydantic import BaseModel as _BM
+class _SamplesReq(_BM):
+    samples: list
+class _AnalyseReq(_BM):
+    photos: list
+
+@app.post("/api/stage/discover")
+def stage_discover(req: _SamplesReq):
+    """Stage 2: Mapillary + OSM discovery concurrently. No AI calls."""
+    import time; t0 = time.perf_counter()
+    samples = [(s["lat"], s["lon"]) for s in req.samples]
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    with _TPE(max_workers=2) as ex:
+        f1 = ex.submit(fetch_osm_access, samples); f2 = ex.submit(fetch_photos, samples, 1)
+        osm_by_idx, osm_warn = f1.result(); photos_by_idx, map_warn = f2.result()
+    return {"photos_by_index": {str(k): v for k, v in photos_by_idx.items()},
+            "osm_by_index": {str(k): v for k, v in osm_by_idx.items()},
+            "warnings": [w for w in [map_warn, osm_warn] if w],
+            "photos_found": sum(len(v) for v in photos_by_idx.values()),
+            "timings": {"discovery_s": round(time.perf_counter()-t0, 2)}}
+
+@app.post("/api/stage/analyse")
+def stage_analyse(req: _AnalyseReq):
+    """Stage 3: Muse Spark per photo, 5-way parallel, versioned SQLite cache.
+    Cached photos make no API call. Returns per-photo signals or null (failed)."""
+    import time; t0 = time.perf_counter()
+    from .schemas import ImageAccessSignals
+    from concurrent.futures import ThreadPoolExecutor
+    def _one(p):
+        cached = cache_get(_cache_key(p["image_id"]))
+        if cached: return p["image_id"], ImageAccessSignals(**cached), "cached"
+        sig, _s = analyse_photo(p)
+        if sig: cache_put(_cache_key(p["image_id"]), sig.model_dump())
+        return p["image_id"], sig, "analysed" if sig else "failed"
+    results, stats = {}, {"cached": 0, "analysed": 0, "failed": 0}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for iid, sig, how in ex.map(_one, req.photos):
+            results[iid] = sig.model_dump() if sig else None; stats[how] += 1
+    return {"results": results, "stats": stats,
+            "timings": {"analysis_s": round(time.perf_counter()-t0, 2)}}
+
 @app.post("/api/brief", response_model=BriefResponse)
 def brief(req: BriefRequest):
+    import time; _t0 = time.perf_counter(); _timings = {}
     try:
         olat, olon, olabel = parse_place(req.origin)
         dlat, dlon, dlabel = parse_place(req.destination)
@@ -104,21 +168,36 @@ def brief(req: BriefRequest):
         raise HTTPException(502, str(e))
     main = routes[0]
     samples = sample_every(main["geometry"]["coordinates"], 50.0)
-    osm_by_idx, osm_warn = fetch_osm_access(samples)
-    photos_by_idx, map_warn = fetch_photos(samples)
+    # OSM and imagery run concurrently — Overpass mirrors can be slow to time out.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    with _TPE(max_workers=2) as _ex:
+        _f_osm = _ex.submit(fetch_osm_access, samples)
+        _f_photos = _ex.submit(fetch_photos, samples, 1)
+        osm_by_idx, osm_warn = _f_osm.result()
+        photos_by_idx, map_warn = _f_photos.result()
     warnings = [w for w in [map_warn, osm_warn] if w]
+    from .schemas import ImageAccessSignals
+    from concurrent.futures import ThreadPoolExecutor
+    all_photos = [p for ps in photos_by_idx.values() for p in ps]
+    def _analyse(p):
+        cached = cache_get(_cache_key(p["image_id"]))
+        if cached:
+            return p["image_id"], ImageAccessSignals(**cached)
+        sig, _src = analyse_photo(p)
+        if sig:
+            cache_put(_cache_key(p["image_id"]), sig.model_dump())
+        return p["image_id"], sig
+    analysed = {}
+    if all_photos:
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            for iid, sig in ex.map(_analyse, all_photos):
+                analysed[iid] = sig
     segments = []
     for i, (lat, lon) in enumerate(samples):
         photos = []
         for p in photos_by_idx.get(i, []):
-            cached = cache_get(p["image_id"])
-            if cached:
-                from .schemas import ImageAccessSignals
-                sig, src = ImageAccessSignals(**cached), "muse_spark"
-            else:
-                sig, src = analyse_photo(p)
-                if sig:
-                    cache_put(p["image_id"], sig.model_dump())
+            sig = analysed.get(p["image_id"])
+            src = "muse_spark" if sig else "unavailable"
             sam_status, mask_url = sam_segment(p) if sig else ("unavailable", None)
             photos.append(EvidencePhoto(**p, signals=sig, signals_source=src, sam_status=sam_status, sam_mask_url=mask_url))
         status, reason, obs, warns = classify(photos, osm_by_idx.get(i, {}))
@@ -141,4 +220,4 @@ def brief(req: BriefRequest):
         route_geojson={"type": "Feature", "geometry": main["geometry"], "properties": {}},
         alternate_geojson=alt_geo, alternate_note=alt_note, segments=segments,
         coverage_pct=pct, coverage_note=cov_note, counts=counts, summary=summary,
-        warnings=warnings, integrations=integrations())
+        warnings=warnings, integrations=integrations(), timings={"total_s": round(time.perf_counter()-_t0, 2)})

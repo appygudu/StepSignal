@@ -76,3 +76,4 @@ class BriefResponse(BaseModel):
     ]
     warnings: List[str] = []
     integrations: dict = {}
+    timings: dict = {}

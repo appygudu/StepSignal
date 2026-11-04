@@ -35,12 +35,12 @@ def main():
     results, stats = {}, {"cached": 0, "success": 0, "failed": 0, "calls": 0}
     def work(item):
         i, p = item
-        cached = cache_get(p["image_id"])
+        cached = cache_get("v2:"+p["image_id"])
         if cached:
             return p["image_id"], ImageAccessSignals(**cached), "cached"
         sig, src = analyse_photo(p)
         if sig:
-            cache_put(p["image_id"], sig.model_dump())
+            cache_put("v2:"+p["image_id"], sig.model_dump())
             return p["image_id"], sig, "analysed"
         return p["image_id"], None, "failed"
 

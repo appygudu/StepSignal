@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 const GH = "https://github.com/appygudu/StepSignal";
@@ -20,6 +20,16 @@ const faqs: [string, string][] = [
 const inp = { width: "100%", padding: 11, margin: "4px 0 10px", borderRadius: 7, background: "#18212c", color: "#eef3f8", border: "1px solid #26323f", minHeight: 44 } as const;
 
 export default function Home() {
+  const [report, setReport] = useState<any>(null);
+  useEffect(() => { fetch(`${API}/api/report`).then(r => r.ok ? r.json() : null).then(setReport).catch(() => {}); }, []);
+  const demoPhoto = report?.segments?.flatMap((s: any) => s.photos.map((p: any) => ({ ...p, seg: s.index + 1 }))).find((p: any) => p.signals && p.thumb_url);
+  const demoSignals = demoPhoto ? Object.entries(demoPhoto.signals).filter(([, v]: any) => v.present !== null).slice(0, 6) : [];
+  const stats = report ? [
+    [`${report.segments.length}`, "route stretches"], [`${report.coverage_pct}%`, "evidence coverage"],
+    [`${report.segments.reduce((n: number, s: any) => n + s.photos.length, 0)}`, "photos retrieved"],
+    [`${report.segments.reduce((n: number, s: any) => n + s.photos.filter((p: any) => p.signals_source === "muse_spark").length, 0)}`, "photos AI-analysed"],
+    [`${report.counts.confirmed_barrier || 0}`, "barrier stretches"], [`${report.counts.uncertain || 0}`, "uncertain stretches"],
+  ] : [];
   const [form, setForm] = useState({ location_text: "", mapillary_url: "", barrier_type: "not_sure", note: "" });
   const [sent, setSent] = useState(""); const [sending, setSending] = useState(false);
   async function contribute(e: React.FormEvent) {
@@ -38,7 +48,7 @@ export default function Home() {
         <header style={{ display: "flex", alignItems: "center", gap: 24, padding: "14px 5vw", borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "rgba(12,16,21,.96)", zIndex: 20 }}>
           <strong style={{ fontSize: 20, letterSpacing: ".2px" }}>StepSignal</strong>
           <nav aria-label="Primary" style={{ display: "flex", gap: 18, fontSize: 14, flexWrap: "wrap" }}>
-            <a href="#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="#ai" style={{ color: "var(--text-2)" }}>AI analysis</a><a href="#contribute" style={{ color: "var(--text-2)" }}>Contribute</a><a href="#faq" style={{ color: "var(--text-2)" }}>FAQ</a><a href="#help" style={{ color: "var(--text-2)" }}>Help desk</a><a href={GH} style={{ color: "var(--text-2)" }}>GitHub</a>
+            <a href="/" style={{ color: "var(--text-2)" }}>Home</a><Link href="/map" style={{ color: "var(--text-2)" }}>Explore</Link><a href="#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="#ai" style={{ color: "var(--text-2)" }}>AI analysis</a><a href="#contribute" style={{ color: "var(--text-2)" }}>Contribute</a><a href="#about" style={{ color: "var(--text-2)" }}>About</a>
           </nav>
           <Link className="btn btn-primary" href="/map" style={{ marginLeft: "auto", padding: "10px 16px" }}>Explore a route</Link>
         </header>
@@ -47,44 +57,49 @@ export default function Home() {
           <div>
             <h1 id="hero-h" style={{ fontSize: 52, lineHeight: 1.06, margin: "0 0 20px", letterSpacing: "-.5px" }}>Know what lies between you and your destination.</h1>
             <p style={{ fontSize: 19, lineHeight: 1.65, color: "var(--text-2)", margin: "0 0 28px", maxWidth: 580 }}>
-              StepSignal uses AI and real-world street imagery to surface accessibility evidence, identify potential barriers and help people make more informed mobility decisions.
+              Explore street-level accessibility evidence, identify potential barriers and make more informed mobility decisions using real-world imagery and AI.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <Link className="btn btn-primary" href="/map" style={{ fontSize: 16, padding: "14px 24px" }}>Explore a route</Link>
-              <a className="btn btn-ghost" href="#how">See how it works</a>
+              <a className="btn btn-ghost" href="#how">How it works</a>
             </div>
-            <dl style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "30px 0 0" }} aria-label="Verified example route results, Bandra West Mumbai">
-              {[["11", "barrier stretches detected"], ["66.7%", "evidence coverage"], ["32", "real photos analysed"], ["6", "stretches left uncertain"]].map(([n, t]) => (
-                <div key={t} className="card" style={{ padding: "13px 16px", minWidth: 150, boxShadow: "none" }}><dt style={{ fontSize: 24, fontWeight: 800 }}>{n}</dt><dd style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>{t}</dd></div>))}
-            </dl>
-            <p style={{ fontSize: 12, color: "var(--muted)" }}>Verified example: Bandra Station → Linking Road, Mumbai. Every figure opens to its photograph on the map. StepSignal works anywhere routing and street imagery exist — coverage is reported per route, never assumed.</p>
+            {stats.length > 0 && <><p style={{ fontSize: 12, color: "var(--brand)", fontWeight: 700, margin: "26px 0 6px" }}>EXAMPLE ROUTE — verified, Bandra Station → Linking Road</p>
+            <dl style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 0, margin: 0, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }} aria-label="Example route statistics">
+              {stats.map(([n, t]) => <div key={t} style={{ padding: "12px 10px", borderRight: "1px solid var(--line)", textAlign: "center" }}><dt style={{ fontSize: 21, fontWeight: 800 }}>{n}</dt><dd style={{ margin: 0, fontSize: 11, color: "var(--muted)", lineHeight: 1.35 }}>{t}</dd></div>)}
+            </dl></>}
           </div>
-          <div className="card" style={{ boxShadow: "var(--shadow)", transform: "perspective(1100px) rotateY(-6deg) rotateX(2deg)" }} aria-label="Product preview">
-            <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--muted)" }}>Route evidence preview · example route</p>
-            <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 8, padding: 16, position: "relative", minHeight: 190 }} role="img" aria-label="Stylised route line with barrier, uncertain and clear evidence pins">
-              <svg viewBox="0 0 320 150" width="100%" aria-hidden="true"><path d="M15 130 C 80 90, 120 110, 165 70 S 260 25, 305 18" fill="none" stroke="#f0b93e" strokeWidth="5" strokeLinecap="round"/><circle cx="60" cy="105" r="10" fill="#e4572e"/><circle cx="140" cy="88" r="10" fill="#93a3b5"/><circle cx="215" cy="48" r="10" fill="#e4572e"/><circle cx="290" cy="22" r="10" fill="#2fa58f"/></svg>
-              <span className="tag" style={{ position: "absolute", left: 14, bottom: 12 }}><span className="dot" style={{ background: "var(--barrier)" }} />Confirmed barrier</span>
-              <span className="tag" style={{ position: "absolute", right: 14, bottom: 12 }}><span className="dot" style={{ background: "var(--unknown)" }} />Uncertain</span>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <p style={{ margin: "0 0 4px" }}><span className="tag"><span className="dot" style={{ background: "var(--barrier)" }} />Potential obstruction · 90% confidence</span></p>
-              <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, margin: "8px 0 4px" }}>“Merchandise and stalls covering the left sidewalk.” — observed in Mapillary photo, captured 2025-09-11.</p>
-              <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>Establishes: an obstruction at capture time. Cannot establish: current conditions, pavement width, gradient.</p>
-            </div>
-            <Link className="btn btn-teal" href="/map" style={{ width: "100%", marginTop: 16 }}>Open this route on the map</Link>
+          <div className="card" style={{ boxShadow: "var(--shadow)" }} aria-label="Real analysed photograph demonstration">
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--muted)" }}>Live demonstration · real Mapillary photo + Muse Spark analysis (cached, no new AI call)</p>
+            {demoPhoto ? <>
+              <img className="thumb" src={demoPhoto.thumb_url} alt={`Real street photograph, Mapillary ${demoPhoto.image_id}, captured ${String(demoPhoto.captured_at).slice(0,10)}`} style={{ maxHeight: 240, objectFit: "cover" }} />
+              <p style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0" }}>Stretch #{demoPhoto.seg} · Mapillary {demoPhoto.image_id} · captured {String(demoPhoto.captured_at).slice(0,10)} · Analysed by Muse Spark (muse-spark-1.3)</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{demoSignals.map(([k, v]: any) => <span key={k} className="chip" style={{ cursor: "default" }}>{k.replaceAll("_"," ")}: {v.present ? "observed" : "not observed"} · {(v.confidence*100).toFixed(0)}%</span>)}</div>
+              {demoSignals.filter(([, v]: any) => v.evidence).slice(0,2).map(([k, v]: any) => <p key={k} style={{ fontSize: 13, color: "var(--text-2)", margin: "8px 0 0" }}><b>{k.replaceAll("_"," ")}:</b> {v.evidence}</p>)}
+              <p style={{ fontSize: 12, color: "var(--muted)" }}>Establishes what is visible above at capture time. Cannot establish current conditions, gradients or widths. Unknowns remain unknown.</p>
+            </> : <p style={{ fontSize: 14, color: "var(--muted)" }}>Verified photo demonstration loads from the backend report. If it is offline, open the map — no illustrative substitute is shown.</p>}
+            <Link className="btn btn-teal" href="/map" style={{ width: "100%", marginTop: 12 }}>Open this route on the map</Link>
+          </div>
+        </section>
+
+        <section aria-labelledby="explore-h" style={{ padding: "8px 5vw 36px", maxWidth: 1180, margin: "0 auto" }}>
+          <h2 id="explore-h" style={{ fontSize: 30, margin: "0 0 6px" }}>Explore StepSignal</h2>
+          <p style={{ color: "var(--text-2)", margin: "0 0 14px" }}>The actual product, embedded — search anywhere in the world, use your location, click the evidence pins.</p>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--shadow)" }}>
+            <iframe src="/map" title="StepSignal interactive evidence map" style={{ width: "100%", height: 560, border: 0, display: "block" }} loading="lazy" />
           </div>
         </section>
 
         <section id="how" style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="how-h">
           <h2 id="how-h" style={{ fontSize: 30, margin: "0 0 8px" }}>How StepSignal works</h2>
           <p style={{ color: "var(--text-2)", maxWidth: 760, lineHeight: 1.7 }}>One journey, end to end: a route becomes a chain of short stretches; each stretch is checked against real photographs and map data; what is found, and what is missing, is shown separately.</p>
-          <ol style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(215px,1fr))", gap: 14, listStyle: "none", padding: 0 }}>
-            {[["Plan a route", "Choose an origin and destination anywhere — type a place, or use your current location with permission. Walking routes come from OSRM."],
-              ["Sample every ~50 m", "The route is divided into short stretches so one hidden kerb cannot hide inside a long “accessible” segment."],
-              ["Gather real evidence", "Street-level photographs (Mapillary) and OpenStreetMap features are retrieved per stretch, with capture dates."],
-              ["Analyse with AI", "Muse Spark reads each photograph and returns structured observations with confidence — never a score."],
-              ["Decide with the gaps visible", "Barriers, clear-looking stretches, and uncertain stretches are labelled differently. Uncertain is a finding, not a failure."],
-            ].map(([t, d], i) => <li key={t} className="card"><p style={{ color: "var(--brand)", fontWeight: 800, margin: "0 0 6px" }}>Step {i + 1}</p><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 14 }}>{d}</p></li>)}
+          <ol style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14, listStyle: "none", padding: 0 }}>
+            {[["Select a location and destination", "Search any city, address or landmark worldwide, or use your current location after explicit permission."],
+              ["Generate a walking route", "OSRM produces the route and, where available, an alternate for stretch-by-stretch comparison."],
+              ["Divide into ~50 m stretches", "Short stretches mean one hidden kerb cannot hide inside a long “accessible” segment."],
+              ["Retrieve photographs and map data", "Mapillary street imagery and OpenStreetMap features are gathered per stretch, with capture dates."],
+              ["Analyse with Meta Muse Spark", "Each real photograph returns structured observations with confidence. Unknown stays unknown."],
+              ["Present evidence and uncertainty", "Barriers, clear-looking stretches, and uncertain stretches are labelled and counted separately."],
+            ].map(([t, d], i) => <li key={t} className="card"><p style={{ color: "var(--brand)", fontWeight: 800, margin: "0 0 6px" }}>{i + 1} →</p><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 14 }}>{d}</p></li>)}
           </ol>
         </section>
 
@@ -117,11 +132,11 @@ export default function Home() {
             <div className="field"><label htmlFor="c-note">Note (optional)</label><textarea id="c-note" className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={3} placeholder="Anything that helps locate it…" /></div>
             <button className="btn btn-teal" disabled={sending} style={{ width: "100%" }}>{sending ? "Sending…" : "Submit for review"}</button>
             {sent && <p role="status" style={{ fontSize: 14, lineHeight: 1.55 }}>{sent}</p>}
-            <p style={{ fontSize: 12, color: "var(--muted)" }}>Stored locally for review. Only a submission count is ever exposed publicly — never your notes.</p>
+            <ol style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 18, lineHeight: 1.7 }}><li>Identify the location (this form)</li><li>Add a Mapillary photo link if you have one</li><li>Describe what you noticed</li><li>Review, then submit</li><li>Transmitted to the StepSignal backend and stored in its local review database — not a central public database. Only a submission count is exposed publicly.</li></ol>
           </form>
         </section>
 
-        <section style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="about-h">
+        <section id="about" style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="about-h">
           <h2 id="about-h" style={{ fontSize: 30, margin: "0 0 12px" }}>About StepSignal</h2>
           <p style={{ color: "var(--text-2)", lineHeight: 1.75, maxWidth: 860 }}>StepSignal was built for the Meta Global AI Developer Hackathon. Data sources: Mapillary street imagery, OpenStreetMap and Overpass, OSRM walking routes, and Meta Muse Spark (`muse-spark-1.3`) for image analysis. Privacy: location is only requested when you ask for it on the map, no location history is stored or transmitted, and API keys never reach the browser. Limitations: photographic coverage and map tags vary worldwide and may be outdated — which is precisely why every claim in StepSignal carries its date and its evidence.</p>
         </section>

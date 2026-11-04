@@ -16,11 +16,16 @@ def fetch_osm_access(samples):
   node["kerb"]({bbox}); node["tactile_paving"]({bbox}); node["barrier"]({bbox}); );
 out center tags 300;"""
     elements = None
-    for m in MIRRORS:
-        try:
-            elements = post_json(m, q, timeout=25).get("elements", []); break
-        except Exception:
-            continue
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def _try(m):
+        return post_json(m, q, timeout=7).get("elements", [])
+    with ThreadPoolExecutor(max_workers=len(MIRRORS)) as ex:
+        futs = [ex.submit(_try, m) for m in MIRRORS]
+        for f in as_completed(futs):
+            try:
+                elements = f.result(); break
+            except Exception:
+                continue
     if elements is None:
         return {}, "OpenStreetMap feature service was unavailable — kerb, tactile paving and surface tags could not be retrieved. Absence here is not evidence about accessibility."
     tagged = []
