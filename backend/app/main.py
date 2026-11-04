@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
-from .schemas import BriefRequest, BriefResponse, Segment, EvidencePhoto
+from .schemas import BriefRequest, BriefResponse, Segment, EvidencePhoto, Contribution
 from .services.routing import parse_place, get_route
 from .services.geo import sample_every
 from .services.osm_access import fetch_osm_access
@@ -48,6 +48,32 @@ def integrations():
 @app.get("/health")
 def health():
     return {"status": "ok", "integrations": integrations()}
+
+@app.post("/api/contributions")
+def add_contribution(c: Contribution):
+    """Community photo/place invite. Stores the submission locally for review.
+    Contributions are leads for future analysis — never displayed as verified evidence."""
+    if not c.location_text.strip():
+        raise HTTPException(400, "location_text is required")
+    if c.mapillary_url and "mapillary.com" not in c.mapillary_url:
+        raise HTTPException(400, "mapillary_url must be a Mapillary link")
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS contributions (id INTEGER PRIMARY KEY, location_text TEXT, lat REAL, lon REAL, mapillary_url TEXT, barrier_type TEXT, note TEXT, contact TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+    cur = con.execute("INSERT INTO contributions (location_text, lat, lon, mapillary_url, barrier_type, note, contact) VALUES (?,?,?,?,?,?,?)",
+                      (c.location_text.strip(), c.lat, c.lon, c.mapillary_url, c.barrier_type, c.note[:1000], c.contact))
+    con.commit(); cid = cur.lastrowid; con.close()
+    return {"status": "received", "id": cid, "note": "Thank you. This is queued for review and is not treated as verified evidence until analysed."}
+
+@app.get("/api/contributions/count")
+def contribution_count():
+    try:
+        con = sqlite3.connect(DB)
+        exists = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='contributions'").fetchone()
+        n = con.execute("SELECT COUNT(*) FROM contributions").fetchone()[0] if exists else 0
+        con.close()
+    except Exception:
+        n = 0
+    return {"count": n}
 
 @app.get("/api/report")
 def report():

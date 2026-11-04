@@ -1,168 +1,130 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import Link from "next/link";
+import { useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-type Photo = { image_id: string; thumb_url?: string; captured_at?: string; signals_source: string; sam_status: string; sam_mask_url?: string; signals?: Record<string, { present: boolean | null; confidence: number; evidence: string }> };
-type Seg = { segment_id: string; index: number; lat: number; lon: number; status: string; status_reason: string; osm: Record<string, string>; photos: Photo[]; observations: string[]; warnings: string[] };
-type Brief = { summary: string; distance_m: number; duration_min: number; route_geojson: any; alternate_geojson?: any; alternate_note?: string; segments: Seg[]; coverage_pct: number; coverage_note: string; counts: Record<string, number>; limits: string[]; warnings: string[]; integrations: Record<string, string> };
+const GH = "https://github.com/appygudu/StepSignal";
+const ISSUES = `${GH}/issues`;
 
-const colour = (s: string) => s === "confirmed_barrier" ? "#e4572e" : s === "observed_clear_of_barriers" ? "#2a9d8f" : "#8b98a8";
-const label = (s: string) => s === "confirmed_barrier" ? "Confirmed barrier" : s === "observed_clear_of_barriers" ? "No barrier visible in evidence" : "Uncertain — insufficient evidence";
-const BARRIERS = ["steps_or_staircase", "pavement_obstruction", "sidewalk_discontinuity", "surface_damage", "crossing_barrier"] as const;
-const HELPERS = ["kerb_ramp", "tactile_paving", "visible_ramp", "pedestrian_crossing"] as const;
-const pretty = (k: string) => k.replaceAll("_", " ");
-
-function barrierHits(s: Seg) {
-  const hits: { kind: string; conf: number; photo: Photo }[] = [];
-  for (const p of s.photos) for (const k of BARRIERS) {
-    const v = p.signals?.[k];
-    if (v?.present === true && v.confidence >= 0.6) hits.push({ kind: k, conf: v.confidence, photo: p });
-  }
-  return hits;
-}
-function ageLabel(d?: string) {
-  if (!d) return "date unavailable";
-  const yrs = (Date.now() - new Date(d).getTime()) / 3.15576e10;
-  return yrs < 1 ? `${d.slice(0, 10)} · under 1 yr old` : `${d.slice(0, 10)} · ${yrs.toFixed(1)} yrs old`;
-}
+const faqs: [string, string][] = [
+  ["Does StepSignal tell me a route is wheelchair accessible?", "No — and that is deliberate. A stretch is only ever described as having a confirmed barrier, having no barrier visible in the analysed evidence, or being uncertain. Photographs cannot prove a whole route is accessible."],
+  ["What does “uncertain” mean?", "It means we do not have enough analysable evidence for that stretch — no photograph, an unanalysed photograph, or too many unknown signals. Uncertain is never treated as accessible."],
+  ["Where do the photographs come from?", "Real street-level images from Mapillary, sampled every ~50 m along the walking route. Each photograph keeps its Mapillary ID and capture date, and both are shown wherever the photo is used."],
+  ["How does the AI work?", "Each image is sent (as an image, not a URL) to Meta Muse Spark (muse-spark-1.3), which returns structured JSON: steps, kerb ramps, tactile paving, obstructions, discontinuities, crossings, crossing barriers and surface damage — each with present / absent / unknown and a confidence score. Unknown values are preserved, never converted into “absent”."],
+  ["Can the AI measure ramp gradients or pavement widths?", "No. Gradients are reported only as “visually suspected” where relevant, and widths and surface quality are never measured from a photograph."],
+  ["How old is the evidence?", "It varies per stretch, and the age is printed on every photograph. The verified Bandra demo uses photos from 2021–2025. Treat older photos as a prompt to check, not as current fact."],
+  ["I found a barrier that is not on the map. Can I add it?", "Yes — use the “Add a street photo” form below. Paste a Mapillary link or describe the location. Submissions are queued for review and only become evidence after analysis; they are never displayed as verified on arrival."],
+  ["Is my contribution public?", "The form stores your submission locally for review. The public API exposes only a submission count, never names, contacts, or notes."],
+];
 
 export default function Home() {
-  const mapRef = useRef<HTMLDivElement>(null); const mapObj = useRef<any>(null); const markers = useRef<any[]>([]);
-  const [origin, setOrigin] = useState("Bandra Station");
-  const [destination, setDestination] = useState("Linking Road Bandra");
-  const [data, setData] = useState<Brief | null>(null);
-  const [loading, setLoading] = useState(false); const [error, setError] = useState("");
-  const [selected, setSelected] = useState<Seg | null>(null);
-  const [filter, setFilter] = useState("all");
-  const [lightbox, setLightbox] = useState<Photo | null>(null);
-  const [tilt, setTilt] = useState(true);
-
-  useEffect(() => {
-    if (!mapRef.current || mapObj.current) return;
-    const map = new maplibregl.Map({ container: mapRef.current, style: "https://demotiles.maplibre.org/style.json", center: [72.837, 19.057], zoom: 14.5, pitch: 58, bearing: -18, antialias: true });
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
-    map.on("load", () => { try { map.setSky?.({ "sky-color": "#0d1117", "horizon-color": "#243447", "fog-color": "#0d1117" }); } catch {} });
-    mapObj.current = map;
-  }, []);
-
-  useEffect(() => { if (mapObj.current) mapObj.current.easeTo({ pitch: tilt ? 58 : 0, bearing: tilt ? -18 : 0, duration: 600 }); }, [tilt]);
-
-  const filtered = useMemo(() => !data ? [] : data.segments.filter(s => filter === "all" || s.status === filter), [data, filter]);
-  const barrierCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    data?.segments.forEach(s => barrierHits(s).forEach(h => { c[h.kind] = (c[h.kind] || 0) + 1; }));
-    return Object.entries(c).sort((a, b) => b[1] - a[1]);
-  }, [data]);
-  const gaps = useMemo(() => data?.segments.filter(s => s.status === "uncertain") || [], [data]);
-  const allPhotos = useMemo(() => data?.segments.flatMap(s => s.photos) || [], [data]);
-
-  useEffect(() => {
-    const map = mapObj.current; if (!map || !data) return;
-    const draw = () => {
-      markers.current.forEach(m => m.remove()); markers.current = [];
-      for (const id of ["route-shadow", "route", "alt"]) { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); }
-      map.addSource("route", { type: "geojson", data: data.route_geojson });
-      map.addLayer({ id: "route-shadow", type: "line", source: "route", layout: { "line-cap": "round" }, paint: { "line-color": "#000000", "line-width": 11, "line-opacity": 0.45, "line-blur": 4, "line-translate": [0, 5] } });
-      map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round" }, paint: { "line-color": "#f2c14e", "line-width": 5 } });
-      if (data.alternate_geojson) { map.addSource("alt", { type: "geojson", data: data.alternate_geojson }); map.addLayer({ id: "alt", type: "line", source: "alt", paint: { "line-color": "#6cb4ee", "line-width": 3.5, "line-dasharray": [2, 2] } }); }
-      data.segments.forEach(s => {
-        const el = document.createElement("button");
-        el.className = "pin"; el.style.background = colour(s.status); el.setAttribute("aria-label", `Stretch ${s.index + 1}: ${label(s.status)}`);
-        el.innerHTML = `<span>${s.index + 1}</span>`;
-        el.style.opacity = (filter === "all" || s.status === filter) ? "1" : "0.25";
-        el.onclick = () => { setSelected(s); map.flyTo({ center: [s.lon, s.lat], zoom: 16.5, pitch: tilt ? 58 : 0, duration: 700 }); };
-        markers.current.push(new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([s.lon, s.lat]).addTo(map));
-      });
-      const coords = data.route_geojson.geometry.coordinates;
-      map.fitBounds(coords.reduce((b: any, c: any) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0])), { padding: 55, pitch: tilt ? 58 : 0 });
-    };
-    if (map.loaded()) draw(); else map.on("load", draw);
-  }, [data, filter]);
-
-  async function loadReport() {
-    setLoading(true); setError("");
-    try { const r = await fetch(`${API}/api/report`); const j = await r.json(); if (!r.ok) throw new Error(j.detail || "No verified report"); setData(j); setSelected(null); }
-    catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  const [form, setForm] = useState({ location_text: "", mapillary_url: "", barrier_type: "not_sure", note: "" });
+  const [sent, setSent] = useState(""); const [sending, setSending] = useState(false);
+  async function contribute(e: React.FormEvent) {
+    e.preventDefault(); setSending(true); setSent("");
+    try {
+      const r = await fetch(`${API}/api/contributions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || "Could not submit");
+      setSent(`Received (reference #${j.id}). Queued for review — thank you.`); setForm({ location_text: "", mapillary_url: "", barrier_type: "not_sure", note: "" });
+    } catch (err: any) { setSent(`Not submitted: ${err.message}. Is the backend running on ${API}? You can also open a GitHub issue instead.`); }
+    finally { setSending(false); }
   }
-  useEffect(() => { loadReport(); }, []);
-  async function submit() {
-    setLoading(true); setError("");
-    try { const r = await fetch(`${API}/api/brief`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin, destination }) }); const j = await r.json(); if (!r.ok) throw new Error(j.detail || "Request failed"); setData(j); setSelected(null); }
-    catch (e: any) { setError(e.message); } finally { setLoading(false); }
-  }
+  const inp = { width: "100%", padding: 10, margin: "4px 0 10px", borderRadius: 6, background: "#1c2633", color: "#edf2f7", border: "1px solid #2c3a4a" } as const;
 
   return (
-    <main style={{ display: "grid", gridTemplateRows: "auto 1fr", minHeight: "100vh" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "#111820" }}>
-        <div><strong style={{ fontSize: 20, letterSpacing: ".2px" }}>StepSignal</strong><span style={{ color: "var(--muted)", fontSize: 13 }}> &nbsp;Bandra West · street-level accessibility evidence</span></div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="chip" aria-pressed={tilt} onClick={() => setTilt(!tilt)}>{tilt ? "3D tilt on" : "3D tilt off"}</button>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>{allPhotos.length} verified photos</span>
-        </div>
+    <main style={{ background: "#0d1117", minHeight: "100vh" }}>
+      <div style={{ height: 6, background: "#f2c14e" }} />
+      <header style={{ display: "flex", alignItems: "center", gap: 22, padding: "14px 5vw", borderBottom: "1px solid #2c3a4a", position: "sticky", top: 0, background: "#0d1117", zIndex: 10 }}>
+        <strong style={{ fontSize: 20 }}>StepSignal</strong>
+        <nav style={{ display: "flex", gap: 18, fontSize: 14, flexWrap: "wrap" }}>
+          <a href="#how" style={{ color: "#a7b4c2" }}>How to use</a><a href="#evidence" style={{ color: "#a7b4c2" }}>Evidence model</a><a href="#contribute" style={{ color: "#a7b4c2" }}>Add a photo</a><a href="#faq" style={{ color: "#a7b4c2" }}>FAQ</a><a href="#help" style={{ color: "#a7b4c2" }}>Help desk</a><a href={GH} style={{ color: "#a7b4c2" }}>GitHub</a>
+        </nav>
+        <Link href="/map" style={{ marginLeft: "auto", background: "#f2c14e", color: "#14100a", fontWeight: 800, padding: "10px 16px", borderRadius: 6, textDecoration: "none" }}>Open live map</Link>
       </header>
-      <div style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", minHeight: 0 }}>
-        <section style={{ position: "relative", minHeight: "62vh" }} aria-label="Route map">
-          <div ref={mapRef} style={{ position: "absolute", inset: 0 }} />
-          <div style={{ position: "absolute", left: 16, bottom: 16, zIndex: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[["all", "All stretches"], ["confirmed_barrier", "Confirmed barriers"], ["observed_clear_of_barriers", "No barrier visible"], ["uncertain", "Uncertain"]].map(([k, t]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{t}</button>)}
-          </div>
-          {selected && <div style={{ position: "absolute", right: 16, top: 16, zIndex: 2, width: 330, maxWidth: "88vw", maxHeight: "78%", overflowY: "auto" }} className="panel" role="dialog" aria-label={`Stretch ${selected.index + 1} detail`}>
-            <button onClick={() => setSelected(null)} style={{ float: "right" }} className="chip">Close</button>
-            <h2 style={{ margin: "2px 0 4px", fontSize: 17 }}>Stretch #{selected.index + 1}</h2>
-            <p style={{ margin: "0 0 8px", color: colour(selected.status), fontWeight: 700, fontSize: 13 }}>{label(selected.status)}</p>
-            <p style={{ fontSize: 13, lineHeight: 1.5 }}>{selected.status_reason}</p>
-            {barrierHits(selected).map((h, i) => <p key={i} style={{ fontSize: 13 }}>Barrier: <b>{pretty(h.kind)}</b> · confidence {(h.conf * 100).toFixed(0)}% · photo {h.photo.image_id} · {ageLabel(h.photo.captured_at)}</p>)}
-            {selected.photos.length === 0 && <p style={{ fontSize: 13, color: "var(--amber)" }}>No photograph exists for this stretch in Mapillary. It stays uncertain — the nearest evidence is on a neighbouring numbered stretch. Absence of a photo is not evidence of accessibility.</p>}
-            {selected.photos.map(p => <figure key={p.image_id} style={{ margin: "12px 0" }}>
-              {p.thumb_url && <img className="thumb" src={p.thumb_url} alt={`Street evidence photo ${p.image_id}`} onClick={() => setLightbox(p)} style={{ cursor: "zoom-in" }} />}
-              <figcaption style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>Mapillary {p.image_id} · {ageLabel(p.captured_at)} · Muse Spark: {p.signals_source === "muse_spark" ? "analysed" : "not analysed"} · SAM mask: {p.sam_mask_url ? "available" : "unavailable (SAM 3.1 not configured — no mask fabricated)"}</figcaption>
-              {p.signals && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{Object.entries(p.signals).map(([k, v]) => <span key={k} className="chip" title={v.evidence || "no evidence text"} style={{ cursor: "default" }}>{pretty(k)}: {v.present === null ? "unknown" : v.present ? "yes" : "no"} · {(v.confidence * 100).toFixed(0)}%</span>)}</div>}
-              {p.signals && Object.values(p.signals).filter(v => v.evidence).slice(0, 3).map((v, i) => <p key={i} style={{ fontSize: 12, color: "var(--muted)" }}>{v.evidence} ({(v.confidence * 100).toFixed(0)}%)</p>)}
-            </figure>)}
-            {selected.observations.map((o, i) => <p key={i} style={{ fontSize: 13, lineHeight: 1.5 }}>• {o}</p>)}
-            {selected.warnings.map((w, i) => <p key={i} style={{ fontSize: 13, color: "var(--amber)" }}>{w}</p>)}
-          </div>}
-        </section>
-        <aside style={{ padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, borderLeft: "1px solid var(--line)" }}>
-          <div className="panel">
-            <label style={{ fontSize: 12, color: "var(--muted)" }}>Origin<input value={origin} onChange={e => setOrigin(e.target.value)} style={{ width: "100%", padding: 9, margin: "4px 0 8px", borderRadius: 6, background: "var(--panel2)", color: "var(--text)", border: "1px solid var(--line)" }} /></label>
-            <label style={{ fontSize: 12, color: "var(--muted)" }}>Destination<input value={destination} onChange={e => setDestination(e.target.value)} style={{ width: "100%", padding: 9, margin: "4px 0 8px", borderRadius: 6, background: "var(--panel2)", color: "var(--text)", border: "1px solid var(--line)" }} /></label>
-            <button onClick={loadReport} style={{ width: "100%", padding: 11, marginBottom: 8, borderRadius: 6, background: "var(--teal)", border: "none", fontWeight: 700, cursor: "pointer" }}>Show verified Bandra report (cached)</button>
-            <button onClick={submit} disabled={loading} style={{ width: "100%", padding: 11, borderRadius: 6, background: "var(--amber)", border: "none", fontWeight: 700, cursor: "pointer" }}>{loading ? "Loading…" : "Analyse a new route (may use paid vision calls)"}</button>
-            {error && <p style={{ color: "#fca5a5", fontSize: 13 }}>{error}</p>}
-          </div>
-          {data && <>
-            <div className="panel">
-              <h2 style={{ margin: "0 0 8px", fontSize: 17 }}>Route continuity</h2>
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <div aria-label={`Coverage ${data.coverage_pct}%`} style={{ width: 92, height: 92, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(var(--amber) ${data.coverage_pct}%, #26313f 0)`, display: "grid", placeItems: "center" }}><div style={{ width: 66, height: 66, borderRadius: "50%", background: "var(--panel)", display: "grid", placeItems: "center", fontWeight: 800 }}>{data.coverage_pct}%</div></div>
-                <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-                  <div><span style={{ color: "var(--red)" }}>●</span> {data.counts.confirmed_barrier || 0} confirmed barrier</div>
-                  <div><span style={{ color: "var(--teal)" }}>●</span> {data.counts.observed_clear_of_barriers || 0} no barrier visible</div>
-                  <div><span style={{ color: "var(--grey)" }}>●</span> {data.counts.uncertain || 0} uncertain</div>
-                  <div style={{ color: "var(--muted)" }}>{(data.distance_m / 1000).toFixed(1)} km · ~{data.duration_min} min</div>
-                </div>
-              </div>
-              <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{data.coverage_note}</p>
-              {barrierCounts.length > 0 && <><h3 style={{ fontSize: 14, margin: "10px 0 6px" }}>Barrier types detected</h3>{barrierCounts.map(([k, n]) => <div key={k} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, fontSize: 13, marginBottom: 5 }}><span>{pretty(k)}</span><b>{n}</b><div className="bar-track" style={{ gridColumn: "1 / -1" }}><div className="bar-fill" style={{ width: `${Math.min(100, n * 12)}%`, background: "var(--red)" }} /></div></div>)}</>}
-            </div>
-            <div className="panel"><h3 style={{ marginTop: 0, fontSize: 15 }}>Stretches</h3><div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {filtered.map(s => <button key={s.segment_id} onClick={() => setSelected(s)} style={{ textAlign: "left", padding: "10px 11px", borderRadius: 6, background: selected?.segment_id === s.segment_id ? "var(--panel2)" : "#111820", color: "var(--text)", border: "1px solid var(--line)", cursor: "pointer" }}><b>#{s.index + 1}</b> · <span style={{ color: colour(s.status) }}>{label(s.status)}</span><span style={{ color: "var(--muted)" }}> · {s.photos.length} photo(s){barrierHits(s).length ? ` · ${barrierHits(s).length} barrier obs.` : ""}</span></button>)}
-              {filtered.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>No stretches match this filter.</p>}
-            </div></div>
-            <div className="panel"><h3 style={{ marginTop: 0, fontSize: 15 }}>Evidence gaps — not accessible, just unassessed</h3>
-              {gaps.length === 0 ? <p style={{ fontSize: 13 }}>Every stretch has analysable evidence.</p> : gaps.map(s => <p key={s.segment_id} style={{ fontSize: 13, lineHeight: 1.5 }}>Stretch #{s.index + 1}: {s.photos.length === 0 ? "no Mapillary photograph retrieved" : "photograph present but not analysed"}. It is excluded from the coverage numerator.</p>)}
-              <p style={{ fontSize: 12, color: "var(--muted)" }}>OpenStreetMap kerb/tactile corroboration: currently unavailable from this network (public Overpass mirrors unreachable). The route report says so explicitly rather than treating missing tags as missing features. SAM 3.1 masks: not configured, so vision observations are shown as text and chips instead of a fabricated overlay.</p>
-            </div>
-            <div className="panel"><h3 style={{ marginTop: 0, fontSize: 15 }}>Limits</h3>{data.limits.map((l, i) => <p key={i} style={{ fontSize: 12, lineHeight: 1.5, color: "var(--muted)" }}>• {l}</p>)}</div>
-          </>}
-        </aside>
-      </div>
-      {lightbox && <div role="dialog" aria-modal="true" aria-label="Photo enlarged" onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, background: "rgba(4,7,11,.9)", zIndex: 50, display: "grid", placeItems: "center", padding: 20 }}>
-        <figure style={{ maxWidth: 900, width: "100%" }}>{lightbox.thumb_url && <img src={lightbox.thumb_url} alt={`Enlarged street evidence photo ${lightbox.image_id}`} style={{ width: "100%", borderRadius: 8 }} />}<figcaption style={{ fontSize: 13, marginTop: 10 }}>Mapillary {lightbox.image_id} · {ageLabel(lightbox.captured_at)} — click anywhere to close</figcaption></figure>
-      </div>}
+
+      <section style={{ padding: "64px 5vw 40px", maxWidth: 1120, margin: "0 auto" }}>
+        <p style={{ color: "#f2c14e", fontWeight: 700, margin: "0 0 10px" }}>For wheelchair users &amp; people with mobility impairments</p>
+        <h1 style={{ fontSize: 58, lineHeight: 1.04, margin: "0 0 18px", maxWidth: 760 }}>Know what is actually on the pavement before you go.</h1>
+        <p style={{ fontSize: 19, lineHeight: 1.6, color: "#c7d2de", maxWidth: 720 }}>
+          StepSignal checks a walking route stretch by stretch (~50 m at a time) against real street-level photographs analysed by Meta Muse Spark.
+          It shows the obstacles that were actually detected, the photograph behind each claim, a confidence score, and how old that evidence is — and it marks everything else <b>uncertain</b> instead of guessing.
+        </p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "26px 0 10px" }}>
+          <Link href="/map" style={{ background: "#f2c14e", color: "#14100a", fontWeight: 800, padding: "14px 22px", borderRadius: 6, textDecoration: "none", fontSize: 16 }}>Explore the Bandra evidence map →</Link>
+          <a href="#contribute" style={{ border: "1px solid #2c3a4a", color: "#edf2f7", padding: "14px 22px", borderRadius: 6, textDecoration: "none" }}>Add a street photo</a>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 22 }} aria-label="Verified Bandra demo results">
+          {[["11", "stretches with confirmed barriers"], ["66.7%", "evidence coverage (12 of 18)"], ["32", "real photos analysed by Muse Spark"], ["6", "stretches honestly uncertain"]].map(([n, t]) => (
+            <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: "14px 16px", minWidth: 170 }}>
+              <div style={{ fontSize: 26, fontWeight: 800 }}>{n}</div><div style={{ fontSize: 13, color: "#a7b4c2" }}>{t}</div>
+            </div>))}
+        </div>
+        <p style={{ fontSize: 12, color: "#8b98a8" }}>Verified demo route: Bandra Station → Linking Road Bandra, Mumbai. Figures are from real cached analysis — open the map to inspect every photograph behind them.</p>
+      </section>
+
+      <section id="how" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>How to use StepSignal</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
+          {[
+            ["1 · Open the map", "The verified Bandra report loads automatically. Coloured pins mark every ~50 m stretch."],
+            ["2 · Read the colours honestly", "Orange: a barrier was detected. Teal: no barrier was visible in the analysed photos. Grey: uncertain — we do not know, and we say so."],
+            ["3 · Click any pin", "See the actual street photographs, capture dates, detected obstacles, confidence scores, and the model's evidence notes. Click a photo to enlarge it."],
+            ["4 · Filter and compare", "Use the filters to isolate confirmed barriers or evidence gaps, and compare the dashed alternate route stretch by stretch."],
+            ["5 · Plan with the gaps in mind", "An uncertain stretch is a reason to check, reroute, or ask — not a green light. Evidence age is printed on every photo."],
+          ].map(([t, d]) => <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 18 }}><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "#a7b4c2", lineHeight: 1.6, fontSize: 14 }}>{d}</p></div>)}
+        </div>
+      </section>
+
+      <section id="evidence" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>The evidence model</h2>
+        <p style={{ color: "#c7d2de", lineHeight: 1.7, maxWidth: 820 }}>Conventional accessibility maps assign a score. StepSignal refuses to. Muse Spark looks for steps, kerb ramps, tactile paving, pavement obstructions, sidewalk discontinuities, pedestrian crossings, crossing barriers and surface damage — and returns <i>present</i>, <i>absent</i>, or <i>unknown</i> with a confidence value for each. Unknowns stay unknown all the way to your screen. Gradients, widths and surface quality are never measured from a photograph, people in photos are never identified, and no route is ever labelled fully wheelchair accessible.</p>
+      </section>
+
+      <section id="contribute" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 26 }}>
+        <div>
+          <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>Help map the gaps</h2>
+          <p style={{ color: "#c7d2de", lineHeight: 1.7 }}>Six of the eighteen Bandra stretches have no street photograph at all. That is exactly where local knowledge matters. Walked past a missing dropped kerb, a blocked footway, or a new ramp? Send us the street and, if you have one, a Mapillary photo link. Submissions are reviewed and analysed before they count as evidence — your tip opens an investigation, it does not become a claim.</p>
+          <p style={{ color: "#a7b4c2", lineHeight: 1.7, fontSize: 14 }}>Prefer GitHub? <a href={ISSUES} style={{ color: "#f2c14e" }}>Open an issue with the location</a> instead. Photographers: uploading street imagery to Mapillary under your own account also directly improves future coverage.</p>
+        </div>
+        <form onSubmit={contribute} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 20 }} aria-label="Add a street photo or location">
+          <label style={{ fontSize: 13 }}>Street / location (required)<input required value={form.location_text} onChange={e => setForm({ ...form, location_text: e.target.value })} placeholder="e.g. Linking Road near National College, Bandra" style={inp} /></label>
+          <label style={{ fontSize: 13 }}>Mapillary photo link (optional)<input value={form.mapillary_url} onChange={e => setForm({ ...form, mapillary_url: e.target.value })} placeholder="https://www.mapillary.com/app/?pKey=…" style={inp} /></label>
+          <label style={{ fontSize: 13 }}>What did you notice?<select value={form.barrier_type} onChange={e => setForm({ ...form, barrier_type: e.target.value })} style={inp}>
+            <option value="not_sure">Not sure — please check</option><option value="steps">Steps / staircase</option><option value="kerb">Missing kerb ramp</option><option value="obstruction">Pavement obstruction</option><option value="surface">Surface damage</option><option value="tactile">Tactile paving (present or missing)</option><option value="ramp">Ramp (present or missing)</option><option value="crossing">Crossing barrier</option>
+          </select></label>
+          <label style={{ fontSize: 13 }}>Note<textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={3} placeholder="Anything that helps locate it…" style={inp} /></label>
+          <button disabled={sending} style={{ width: "100%", padding: 12, borderRadius: 6, background: "#2a9d8f", border: "none", fontWeight: 800, cursor: "pointer" }}>{sending ? "Sending…" : "Submit for review"}</button>
+          {sent && <p style={{ fontSize: 13, lineHeight: 1.5 }} role="status">{sent}</p>}
+        </form>
+      </section>
+
+      <section id="faq" style={{ padding: "34px 5vw", maxWidth: 900, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>Frequently asked questions</h2>
+        {faqs.map(([q, a]) => <details key={q} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: "14px 18px", marginBottom: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>{q}</summary><p style={{ color: "#a7b4c2", lineHeight: 1.65, marginBottom: 4 }}>{a}</p>
+        </details>)}
+      </section>
+
+      <section id="help" style={{ padding: "34px 5vw 56px", maxWidth: 1120, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>Help desk</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
+          {[
+            ["Report a wrong observation", "Model evidence can be wrong or outdated. Open a GitHub issue with the stretch number and photo ID and we will re-check it.", "Open an issue", ISSUES],
+            ["The map or a photo will not load", "The verified demo needs the backend on port 8001. Setup steps are in the README; if it still fails, file an issue with your browser and the error text.", "Setup guide", `${GH}#quick-start-verified-demo-no-api-keys-needed`],
+            ["Request a new neighbourhood", "Coverage follows Mapillary imagery. Tell us the area and route you need — good photo coverage is the main requirement.", "Request an area", ISSUES],
+            ["Accessibility of this website", "We aim for keyboard-operable controls, labelled pins, and text alternatives for evidence photos. Tell us where we fall short.", "Tell us", ISSUES],
+          ].map(([t, d, cta, href]) => <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 18 }}>
+            <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ color: "#a7b4c2", lineHeight: 1.6, fontSize: 14 }}>{d}</p>
+            <a href={href} style={{ color: "#f2c14e", fontWeight: 700 }}>{cta} →</a>
+          </div>)}
+        </div>
+      </section>
+
+      <footer style={{ borderTop: "1px solid #2c3a4a", padding: "22px 5vw", color: "#8b98a8", fontSize: 13, display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <span><b style={{ color: "#edf2f7" }}>StepSignal</b> · Meta Global AI Developer Hackathon</span>
+        <span>Evidence, not guarantees. Data may be outdated.</span>
+        <Link href="/map" style={{ color: "#f2c14e" }}>Live map</Link><a href={GH} style={{ color: "#f2c14e" }}>Source code</a>
+      </footer>
     </main>
   );
 }

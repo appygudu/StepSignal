@@ -4,7 +4,7 @@
 
 **Street-level accessibility evidence for wheelchair users and people with mobility impairments.**
 
-Cover page: run the app and open http://localhost:3001/cover · Live evidence map: http://localhost:3001
+Front page (about, how to use, FAQ, help desk, add-a-photo): http://localhost:3001 · Live evidence map: http://localhost:3001/map
 
 Screenshots / demo video: no hosted video yet — use the cover page and the [2-minute demo script](docs/DEMO.md) to record one. No screenshot or video link is claimed here because none has been published.
 
@@ -29,7 +29,7 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd ../frontend && npm install && npm run dev
 ```
 
-Open http://localhost:3001. The verified Bandra evidence report loads automatically — click the coloured pins, filter stretches, enlarge photographs. All 32 analysed photographs are cached in `docs/evidence-report.json`, so the demo makes no paid model calls.
+Open http://localhost:3001 for the front page, then choose **Open live map** (or go directly to http://localhost:3001/map). The verified Bandra evidence report loads automatically — click the coloured pins, filter stretches, enlarge photographs. All 32 analysed photographs are cached in `docs/evidence-report.json`, so the demo makes no paid model calls. Community photo/location submissions from the front page are stored via `POST /api/contributions` for review; they are never shown as verified evidence on arrival.
 
 ## Fresh route analysis
 

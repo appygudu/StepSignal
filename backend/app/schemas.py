@@ -42,6 +42,15 @@ class Segment(BaseModel):
     observations: List[str] = []
     warnings: List[str] = []
 
+class Contribution(BaseModel):
+    location_text: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    mapillary_url: Optional[str] = None
+    barrier_type: str = "not_sure"
+    note: str = ""
+    contact: Optional[str] = None  # stored locally only; never published by the API list endpoint
+
 class BriefRequest(BaseModel):
     origin: str
     destination: str
