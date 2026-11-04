@@ -7,15 +7,17 @@ const GH = "https://github.com/appygudu/StepSignal";
 const ISSUES = `${GH}/issues`;
 
 const faqs: [string, string][] = [
-  ["Does StepSignal tell me a route is wheelchair accessible?", "No — and that is deliberate. A stretch is only ever described as having a confirmed barrier, having no barrier visible in the analysed evidence, or being uncertain. Photographs cannot prove a whole route is accessible."],
-  ["What does “uncertain” mean?", "It means we do not have enough analysable evidence for that stretch — no photograph, an unanalysed photograph, or too many unknown signals. Uncertain is never treated as accessible."],
-  ["Where do the photographs come from?", "Real street-level images from Mapillary, sampled every ~50 m along the walking route. Each photograph keeps its Mapillary ID and capture date, and both are shown wherever the photo is used."],
-  ["How does the AI work?", "Each image is sent (as an image, not a URL) to Meta Muse Spark (muse-spark-1.3), which returns structured JSON: steps, kerb ramps, tactile paving, obstructions, discontinuities, crossings, crossing barriers and surface damage — each with present / absent / unknown and a confidence score. Unknown values are preserved, never converted into “absent”."],
-  ["Can the AI measure ramp gradients or pavement widths?", "No. Gradients are reported only as “visually suspected” where relevant, and widths and surface quality are never measured from a photograph."],
-  ["How old is the evidence?", "It varies per stretch, and the age is printed on every photograph. The verified Bandra demo uses photos from 2021–2025. Treat older photos as a prompt to check, not as current fact."],
-  ["I found a barrier that is not on the map. Can I add it?", "Yes — use the “Add a street photo” form below. Paste a Mapillary link or describe the location. Submissions are queued for review and only become evidence after analysis; they are never displayed as verified on arrival."],
-  ["Is my contribution public?", "The form stores your submission locally for review. The public API exposes only a submission count, never names, contacts, or notes."],
+  ["Does StepSignal tell me a route is wheelchair accessible?", "No — deliberately. A stretch is only ever described as having a confirmed barrier, having no barrier visible in the analysed evidence, or being uncertain. Photographs cannot certify a whole route."],
+  ["What does “uncertain” mean?", "We do not have enough analysable evidence for that stretch — no photograph, an unanalysed photograph, or too many unknown signals. Uncertain is never treated as accessible."],
+  ["Where do photographs come from?", "Real street-level images from Mapillary, sampled every ~50 m along the walking route. Every photograph keeps its Mapillary ID and capture date, shown wherever it is used. Imagery availability varies by location worldwide, and the app says so per route."],
+  ["How does the AI work?", "Each image is sent (as an image, not a URL) to Meta Muse Spark (muse-spark-1.3), which returns structured JSON: steps, kerb ramps, tactile paving, obstructions, discontinuities, crossings, crossing barriers and surface damage — each present, absent, or unknown, with confidence. Unknowns stay unknown."],
+  ["Can the AI measure ramp gradients or widths?", "No. Gradients are at most “visually suspected”, and widths and surface quality are never measured from a photograph."],
+  ["Does StepSignal track my location?", "Only if you choose it. Location is requested only when you tap “Use my current location” or enable live tracking on the map. Nothing is requested on page load, no location history is stored, and tracking can be stopped at any time."],
+  ["How old is the evidence?", "It varies per stretch, and the age is printed on every photograph. The verified Bandra example uses photos from 2021–2025."],
+  ["I found a barrier that is not mapped. Can I add it?", "Yes — use the form below. Paste a Mapillary link or describe the location. Submissions are queued for review and only become evidence after analysis."],
 ];
+
+const inp = { width: "100%", padding: 11, margin: "4px 0 10px", borderRadius: 7, background: "#18212c", color: "#eef3f8", border: "1px solid #26323f", minHeight: 44 } as const;
 
 export default function Home() {
   const [form, setForm] = useState({ location_text: "", mapillary_url: "", barrier_type: "not_sure", note: "" });
@@ -26,105 +28,126 @@ export default function Home() {
       const r = await fetch(`${API}/api/contributions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const j = await r.json(); if (!r.ok) throw new Error(j.detail || "Could not submit");
       setSent(`Received (reference #${j.id}). Queued for review — thank you.`); setForm({ location_text: "", mapillary_url: "", barrier_type: "not_sure", note: "" });
-    } catch (err: any) { setSent(`Not submitted: ${err.message}. Is the backend running on ${API}? You can also open a GitHub issue instead.`); }
+    } catch (err: any) { setSent(`Not submitted: ${err.message}. If the backend is offline you can also open a GitHub issue instead.`); }
     finally { setSending(false); }
   }
-  const inp = { width: "100%", padding: 10, margin: "4px 0 10px", borderRadius: 6, background: "#1c2633", color: "#edf2f7", border: "1px solid #2c3a4a" } as const;
-
   return (
-    <main style={{ background: "#0d1117", minHeight: "100vh" }}>
-      <div style={{ height: 6, background: "#f2c14e" }} />
-      <header style={{ display: "flex", alignItems: "center", gap: 22, padding: "14px 5vw", borderBottom: "1px solid #2c3a4a", position: "sticky", top: 0, background: "#0d1117", zIndex: 10 }}>
-        <strong style={{ fontSize: 20 }}>StepSignal</strong>
-        <nav style={{ display: "flex", gap: 18, fontSize: 14, flexWrap: "wrap" }}>
-          <a href="#how" style={{ color: "#a7b4c2" }}>How to use</a><a href="#evidence" style={{ color: "#a7b4c2" }}>Evidence model</a><a href="#contribute" style={{ color: "#a7b4c2" }}>Add a photo</a><a href="#faq" style={{ color: "#a7b4c2" }}>FAQ</a><a href="#help" style={{ color: "#a7b4c2" }}>Help desk</a><a href={GH} style={{ color: "#a7b4c2" }}>GitHub</a>
-        </nav>
-        <Link href="/map" style={{ marginLeft: "auto", background: "#f2c14e", color: "#14100a", fontWeight: 800, padding: "10px 16px", borderRadius: 6, textDecoration: "none" }}>Open live map</Link>
-      </header>
+    <>
+      <a className="skip" href="#main">Skip to content</a>
+      <main id="main" style={{ background: "var(--bg)", minHeight: "100vh" }}>
+        <header style={{ display: "flex", alignItems: "center", gap: 24, padding: "14px 5vw", borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "rgba(12,16,21,.96)", zIndex: 20 }}>
+          <strong style={{ fontSize: 20, letterSpacing: ".2px" }}>StepSignal</strong>
+          <nav aria-label="Primary" style={{ display: "flex", gap: 18, fontSize: 14, flexWrap: "wrap" }}>
+            <a href="#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="#ai" style={{ color: "var(--text-2)" }}>AI analysis</a><a href="#contribute" style={{ color: "var(--text-2)" }}>Contribute</a><a href="#faq" style={{ color: "var(--text-2)" }}>FAQ</a><a href="#help" style={{ color: "var(--text-2)" }}>Help desk</a><a href={GH} style={{ color: "var(--text-2)" }}>GitHub</a>
+          </nav>
+          <Link className="btn btn-primary" href="/map" style={{ marginLeft: "auto", padding: "10px 16px" }}>Explore a route</Link>
+        </header>
 
-      <section style={{ padding: "64px 5vw 40px", maxWidth: 1120, margin: "0 auto" }}>
-        <p style={{ color: "#f2c14e", fontWeight: 700, margin: "0 0 10px" }}>For wheelchair users &amp; people with mobility impairments</p>
-        <h1 style={{ fontSize: 58, lineHeight: 1.04, margin: "0 0 18px", maxWidth: 760 }}>Know what is actually on the pavement before you go.</h1>
-        <p style={{ fontSize: 19, lineHeight: 1.6, color: "#c7d2de", maxWidth: 720 }}>
-          StepSignal checks a walking route stretch by stretch (~50 m at a time) against real street-level photographs analysed by Meta Muse Spark.
-          It shows the obstacles that were actually detected, the photograph behind each claim, a confidence score, and how old that evidence is — and it marks everything else <b>uncertain</b> instead of guessing.
-        </p>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "26px 0 10px" }}>
-          <Link href="/map" style={{ background: "#f2c14e", color: "#14100a", fontWeight: 800, padding: "14px 22px", borderRadius: 6, textDecoration: "none", fontSize: 16 }}>Explore the Bandra evidence map →</Link>
-          <a href="#contribute" style={{ border: "1px solid #2c3a4a", color: "#edf2f7", padding: "14px 22px", borderRadius: 6, textDecoration: "none" }}>Add a street photo</a>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 22 }} aria-label="Verified Bandra demo results">
-          {[["11", "stretches with confirmed barriers"], ["66.7%", "evidence coverage (12 of 18)"], ["32", "real photos analysed by Muse Spark"], ["6", "stretches honestly uncertain"]].map(([n, t]) => (
-            <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: "14px 16px", minWidth: 170 }}>
-              <div style={{ fontSize: 26, fontWeight: 800 }}>{n}</div><div style={{ fontSize: 13, color: "#a7b4c2" }}>{t}</div>
-            </div>))}
-        </div>
-        <p style={{ fontSize: 12, color: "#8b98a8" }}>Verified demo route: Bandra Station → Linking Road Bandra, Mumbai. Figures are from real cached analysis — open the map to inspect every photograph behind them.</p>
-      </section>
+        <section style={{ padding: "72px 5vw 48px", maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 44, alignItems: "center" }} aria-labelledby="hero-h">
+          <div>
+            <h1 id="hero-h" style={{ fontSize: 52, lineHeight: 1.06, margin: "0 0 20px", letterSpacing: "-.5px" }}>Know what lies between you and your destination.</h1>
+            <p style={{ fontSize: 19, lineHeight: 1.65, color: "var(--text-2)", margin: "0 0 28px", maxWidth: 580 }}>
+              StepSignal uses AI and real-world street imagery to surface accessibility evidence, identify potential barriers and help people make more informed mobility decisions.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <Link className="btn btn-primary" href="/map" style={{ fontSize: 16, padding: "14px 24px" }}>Explore a route</Link>
+              <a className="btn btn-ghost" href="#how">See how it works</a>
+            </div>
+            <dl style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "30px 0 0" }} aria-label="Verified example route results, Bandra West Mumbai">
+              {[["11", "barrier stretches detected"], ["66.7%", "evidence coverage"], ["32", "real photos analysed"], ["6", "stretches left uncertain"]].map(([n, t]) => (
+                <div key={t} className="card" style={{ padding: "13px 16px", minWidth: 150, boxShadow: "none" }}><dt style={{ fontSize: 24, fontWeight: 800 }}>{n}</dt><dd style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>{t}</dd></div>))}
+            </dl>
+            <p style={{ fontSize: 12, color: "var(--muted)" }}>Verified example: Bandra Station → Linking Road, Mumbai. Every figure opens to its photograph on the map. StepSignal works anywhere routing and street imagery exist — coverage is reported per route, never assumed.</p>
+          </div>
+          <div className="card" style={{ boxShadow: "var(--shadow)", transform: "perspective(1100px) rotateY(-6deg) rotateX(2deg)" }} aria-label="Product preview">
+            <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--muted)" }}>Route evidence preview · example route</p>
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 8, padding: 16, position: "relative", minHeight: 190 }} role="img" aria-label="Stylised route line with barrier, uncertain and clear evidence pins">
+              <svg viewBox="0 0 320 150" width="100%" aria-hidden="true"><path d="M15 130 C 80 90, 120 110, 165 70 S 260 25, 305 18" fill="none" stroke="#f0b93e" strokeWidth="5" strokeLinecap="round"/><circle cx="60" cy="105" r="10" fill="#e4572e"/><circle cx="140" cy="88" r="10" fill="#93a3b5"/><circle cx="215" cy="48" r="10" fill="#e4572e"/><circle cx="290" cy="22" r="10" fill="#2fa58f"/></svg>
+              <span className="tag" style={{ position: "absolute", left: 14, bottom: 12 }}><span className="dot" style={{ background: "var(--barrier)" }} />Confirmed barrier</span>
+              <span className="tag" style={{ position: "absolute", right: 14, bottom: 12 }}><span className="dot" style={{ background: "var(--unknown)" }} />Uncertain</span>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <p style={{ margin: "0 0 4px" }}><span className="tag"><span className="dot" style={{ background: "var(--barrier)" }} />Potential obstruction · 90% confidence</span></p>
+              <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, margin: "8px 0 4px" }}>“Merchandise and stalls covering the left sidewalk.” — observed in Mapillary photo, captured 2025-09-11.</p>
+              <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>Establishes: an obstruction at capture time. Cannot establish: current conditions, pavement width, gradient.</p>
+            </div>
+            <Link className="btn btn-teal" href="/map" style={{ width: "100%", marginTop: 16 }}>Open this route on the map</Link>
+          </div>
+        </section>
 
-      <section id="how" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto" }}>
-        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>How to use StepSignal</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
-          {[
-            ["1 · Open the map", "The verified Bandra report loads automatically. Coloured pins mark every ~50 m stretch."],
-            ["2 · Read the colours honestly", "Orange: a barrier was detected. Teal: no barrier was visible in the analysed photos. Grey: uncertain — we do not know, and we say so."],
-            ["3 · Click any pin", "See the actual street photographs, capture dates, detected obstacles, confidence scores, and the model's evidence notes. Click a photo to enlarge it."],
-            ["4 · Filter and compare", "Use the filters to isolate confirmed barriers or evidence gaps, and compare the dashed alternate route stretch by stretch."],
-            ["5 · Plan with the gaps in mind", "An uncertain stretch is a reason to check, reroute, or ask — not a green light. Evidence age is printed on every photo."],
-          ].map(([t, d]) => <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 18 }}><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "#a7b4c2", lineHeight: 1.6, fontSize: 14 }}>{d}</p></div>)}
-        </div>
-      </section>
+        <section id="how" style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="how-h">
+          <h2 id="how-h" style={{ fontSize: 30, margin: "0 0 8px" }}>How StepSignal works</h2>
+          <p style={{ color: "var(--text-2)", maxWidth: 760, lineHeight: 1.7 }}>One journey, end to end: a route becomes a chain of short stretches; each stretch is checked against real photographs and map data; what is found, and what is missing, is shown separately.</p>
+          <ol style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(215px,1fr))", gap: 14, listStyle: "none", padding: 0 }}>
+            {[["Plan a route", "Choose an origin and destination anywhere — type a place, or use your current location with permission. Walking routes come from OSRM."],
+              ["Sample every ~50 m", "The route is divided into short stretches so one hidden kerb cannot hide inside a long “accessible” segment."],
+              ["Gather real evidence", "Street-level photographs (Mapillary) and OpenStreetMap features are retrieved per stretch, with capture dates."],
+              ["Analyse with AI", "Muse Spark reads each photograph and returns structured observations with confidence — never a score."],
+              ["Decide with the gaps visible", "Barriers, clear-looking stretches, and uncertain stretches are labelled differently. Uncertain is a finding, not a failure."],
+            ].map(([t, d], i) => <li key={t} className="card"><p style={{ color: "var(--brand)", fontWeight: 800, margin: "0 0 6px" }}>Step {i + 1}</p><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 14 }}>{d}</p></li>)}
+          </ol>
+        </section>
 
-      <section id="evidence" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto" }}>
-        <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>The evidence model</h2>
-        <p style={{ color: "#c7d2de", lineHeight: 1.7, maxWidth: 820 }}>Conventional accessibility maps assign a score. StepSignal refuses to. Muse Spark looks for steps, kerb ramps, tactile paving, pavement obstructions, sidewalk discontinuities, pedestrian crossings, crossing barriers and surface damage — and returns <i>present</i>, <i>absent</i>, or <i>unknown</i> with a confidence value for each. Unknowns stay unknown all the way to your screen. Gradients, widths and surface quality are never measured from a photograph, people in photos are never identified, and no route is ever labelled fully wheelchair accessible.</p>
-      </section>
+        <section style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 36 }} aria-labelledby="why-h">
+          <div><h2 id="why-h" style={{ fontSize: 30, margin: "0 0 12px" }}>Why street-level evidence matters</h2>
+            <p style={{ color: "var(--text-2)", lineHeight: 1.75 }}>A route can look perfect on a map and fail at a single kerb. Accessibility lives at street level: a stall across a footway, a footpath that simply ends, a flight of steps at a doorway. Those details rarely exist in map data, but they are visible in street photographs. StepSignal’s job is to surface them — with the photograph attached, so you can judge for yourself.</p></div>
+          <div><h2 style={{ fontSize: 30, margin: "0 0 12px" }}>Why we show uncertainty</h2>
+            <p style={{ color: "var(--text-2)", lineHeight: 1.75 }}>Most of the world’s pavements have never been photographed for this purpose, and map tags are patchy. An app that fills those gaps with a confident score is inventing reassurance. StepSignal instead treats “we don’t know” as first-class information: it is counted, mapped, and explained. That honesty is what makes the confirmed findings worth trusting.</p></div>
+        </section>
 
-      <section id="contribute" style={{ padding: "34px 5vw", maxWidth: 1120, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 26 }}>
-        <div>
-          <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>Help map the gaps</h2>
-          <p style={{ color: "#c7d2de", lineHeight: 1.7 }}>Six of the eighteen Bandra stretches have no street photograph at all. That is exactly where local knowledge matters. Walked past a missing dropped kerb, a blocked footway, or a new ramp? Send us the street and, if you have one, a Mapillary photo link. Submissions are reviewed and analysed before they count as evidence — your tip opens an investigation, it does not become a claim.</p>
-          <p style={{ color: "#a7b4c2", lineHeight: 1.7, fontSize: 14 }}>Prefer GitHub? <a href={ISSUES} style={{ color: "#f2c14e" }}>Open an issue with the location</a> instead. Photographers: uploading street imagery to Mapillary under your own account also directly improves future coverage.</p>
-        </div>
-        <form onSubmit={contribute} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 20 }} aria-label="Add a street photo or location">
-          <label style={{ fontSize: 13 }}>Street / location (required)<input required value={form.location_text} onChange={e => setForm({ ...form, location_text: e.target.value })} placeholder="e.g. Linking Road near National College, Bandra" style={inp} /></label>
-          <label style={{ fontSize: 13 }}>Mapillary photo link (optional)<input value={form.mapillary_url} onChange={e => setForm({ ...form, mapillary_url: e.target.value })} placeholder="https://www.mapillary.com/app/?pKey=…" style={inp} /></label>
-          <label style={{ fontSize: 13 }}>What did you notice?<select value={form.barrier_type} onChange={e => setForm({ ...form, barrier_type: e.target.value })} style={inp}>
-            <option value="not_sure">Not sure — please check</option><option value="steps">Steps / staircase</option><option value="kerb">Missing kerb ramp</option><option value="obstruction">Pavement obstruction</option><option value="surface">Surface damage</option><option value="tactile">Tactile paving (present or missing)</option><option value="ramp">Ramp (present or missing)</option><option value="crossing">Crossing barrier</option>
-          </select></label>
-          <label style={{ fontSize: 13 }}>Note<textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={3} placeholder="Anything that helps locate it…" style={inp} /></label>
-          <button disabled={sending} style={{ width: "100%", padding: 12, borderRadius: 6, background: "#2a9d8f", border: "none", fontWeight: 800, cursor: "pointer" }}>{sending ? "Sending…" : "Submit for review"}</button>
-          {sent && <p style={{ fontSize: 13, lineHeight: 1.5 }} role="status">{sent}</p>}
-        </form>
-      </section>
+        <section id="ai" style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="ai-h">
+          <h2 id="ai-h" style={{ fontSize: 30, margin: "0 0 16px" }}>How AI analyses real-world imagery</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
+            {[["What the image shows", "Muse Spark describes visible features only: steps, kerb ramps, tactile paving, obstructions, surface damage, crossings."],
+              ["What might be an issue", "Features are framed as potential barriers for a wheelchair user — an interpretation, labelled as such, not a certification."],
+              ["How confident, what’s unknown", "Every observation carries a confidence value, and anything the model cannot tell stays “unknown” on screen."],
+              ["What needs a human", "Old photographs, low-confidence readings, and unphotographed stretches are flagged for human verification — including yours, via the contribution form."],
+            ].map(([t, d]) => <div key={t} className="card"><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 14 }}>{d}</p></div>)}
+          </div>
+        </section>
 
-      <section id="faq" style={{ padding: "34px 5vw", maxWidth: 900, margin: "0 auto" }}>
-        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>Frequently asked questions</h2>
-        {faqs.map(([q, a]) => <details key={q} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: "14px 18px", marginBottom: 10 }}>
-          <summary style={{ cursor: "pointer", fontWeight: 700 }}>{q}</summary><p style={{ color: "#a7b4c2", lineHeight: 1.65, marginBottom: 4 }}>{a}</p>
-        </details>)}
-      </section>
+        <section id="contribute" style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }} aria-labelledby="contrib-h">
+          <div><h2 id="contrib-h" style={{ fontSize: 30, margin: "0 0 12px" }}>Help map the gaps</h2>
+            <p style={{ color: "var(--text-2)", lineHeight: 1.75 }}>Six of the eighteen stretches in our verified example have no street photograph at all. Local knowledge closes gaps like those. Send a location or a Mapillary photo link and tell us what you noticed. Submissions are stored for review, analysed before they count as evidence, and are never displayed as verified on arrival. Prefer GitHub? <a href={ISSUES}>Open an issue</a> instead. Uploading street imagery to Mapillary under your own account also directly improves future coverage.</p></div>
+          <form onSubmit={contribute} className="card" aria-label="Add a street photo or location">
+            <div className="field"><label htmlFor="c-loc">Street / location (required)</label><input id="c-loc" className="input" required value={form.location_text} onChange={e => setForm({ ...form, location_text: e.target.value })} placeholder="Street, landmark, city" /></div>
+            <div className="field"><label htmlFor="c-url">Mapillary photo link (optional)</label><input id="c-url" className="input" value={form.mapillary_url} onChange={e => setForm({ ...form, mapillary_url: e.target.value })} placeholder="https://www.mapillary.com/app/?pKey=…" /></div>
+            <div className="field"><label htmlFor="c-type">What did you notice?</label><select id="c-type" className="input" value={form.barrier_type} onChange={e => setForm({ ...form, barrier_type: e.target.value })}>
+              <option value="not_sure">Not sure — please check</option><option value="steps">Steps / staircase</option><option value="kerb">Missing kerb ramp</option><option value="obstruction">Pavement obstruction</option><option value="surface">Surface damage</option><option value="tactile">Tactile paving</option><option value="ramp">Ramp</option><option value="crossing">Crossing barrier</option></select></div>
+            <div className="field"><label htmlFor="c-note">Note (optional)</label><textarea id="c-note" className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={3} placeholder="Anything that helps locate it…" /></div>
+            <button className="btn btn-teal" disabled={sending} style={{ width: "100%" }}>{sending ? "Sending…" : "Submit for review"}</button>
+            {sent && <p role="status" style={{ fontSize: 14, lineHeight: 1.55 }}>{sent}</p>}
+            <p style={{ fontSize: 12, color: "var(--muted)" }}>Stored locally for review. Only a submission count is ever exposed publicly — never your notes.</p>
+          </form>
+        </section>
 
-      <section id="help" style={{ padding: "34px 5vw 56px", maxWidth: 1120, margin: "0 auto" }}>
-        <h2 style={{ fontSize: 30, margin: "0 0 16px" }}>Help desk</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
-          {[
-            ["Report a wrong observation", "Model evidence can be wrong or outdated. Open a GitHub issue with the stretch number and photo ID and we will re-check it.", "Open an issue", ISSUES],
-            ["The map or a photo will not load", "The verified demo needs the backend on port 8001. Setup steps are in the README; if it still fails, file an issue with your browser and the error text.", "Setup guide", `${GH}#quick-start-verified-demo-no-api-keys-needed`],
-            ["Request a new neighbourhood", "Coverage follows Mapillary imagery. Tell us the area and route you need — good photo coverage is the main requirement.", "Request an area", ISSUES],
-            ["Accessibility of this website", "We aim for keyboard-operable controls, labelled pins, and text alternatives for evidence photos. Tell us where we fall short.", "Tell us", ISSUES],
-          ].map(([t, d, cta, href]) => <div key={t} style={{ background: "#161d26", border: "1px solid #2c3a4a", borderRadius: 8, padding: 18 }}>
-            <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ color: "#a7b4c2", lineHeight: 1.6, fontSize: 14 }}>{d}</p>
-            <a href={href} style={{ color: "#f2c14e", fontWeight: 700 }}>{cta} →</a>
-          </div>)}
-        </div>
-      </section>
+        <section style={{ padding: "40px 5vw", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="about-h">
+          <h2 id="about-h" style={{ fontSize: 30, margin: "0 0 12px" }}>About StepSignal</h2>
+          <p style={{ color: "var(--text-2)", lineHeight: 1.75, maxWidth: 860 }}>StepSignal was built for the Meta Global AI Developer Hackathon. Data sources: Mapillary street imagery, OpenStreetMap and Overpass, OSRM walking routes, and Meta Muse Spark (`muse-spark-1.3`) for image analysis. Privacy: location is only requested when you ask for it on the map, no location history is stored or transmitted, and API keys never reach the browser. Limitations: photographic coverage and map tags vary worldwide and may be outdated — which is precisely why every claim in StepSignal carries its date and its evidence.</p>
+        </section>
 
-      <footer style={{ borderTop: "1px solid #2c3a4a", padding: "22px 5vw", color: "#8b98a8", fontSize: 13, display: "flex", gap: 20, flexWrap: "wrap" }}>
-        <span><b style={{ color: "#edf2f7" }}>StepSignal</b> · Meta Global AI Developer Hackathon</span>
-        <span>Evidence, not guarantees. Data may be outdated.</span>
-        <Link href="/map" style={{ color: "#f2c14e" }}>Live map</Link><a href={GH} style={{ color: "#f2c14e" }}>Source code</a>
-      </footer>
-    </main>
+        <section id="faq" style={{ padding: "40px 5vw", maxWidth: 900, margin: "0 auto" }} aria-labelledby="faq-h">
+          <h2 id="faq-h" style={{ fontSize: 30, margin: "0 0 16px" }}>Frequently asked questions</h2>
+          {faqs.map(([q, a]) => <details key={q} className="faq" style={{ marginBottom: 10 }}><summary>{q}</summary><p style={{ color: "var(--muted)", lineHeight: 1.65, marginBottom: 4 }}>{a}</p></details>)}
+        </section>
+
+        <section id="help" style={{ padding: "40px 5vw 60px", maxWidth: 1180, margin: "0 auto" }} aria-labelledby="help-h">
+          <h2 id="help-h" style={{ fontSize: 30, margin: "0 0 16px" }}>Help desk</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
+            {[["Report a wrong observation", "Evidence can be wrong or outdated. Open an issue with the stretch number and photo ID.", "Open an issue", ISSUES],
+              ["Map or photo will not load", "The demo needs the backend running (see README). Still stuck? File an issue with the error text.", "Setup guide", `${GH}#quick-start-verified-demo-no-api-keys-needed`],
+              ["Request a new area", "Coverage follows street imagery. Tell us the route you need.", "Request an area", ISSUES],
+              ["This website’s accessibility", "Keyboard-operable controls, labelled pins, alt text throughout. Tell us where we fall short.", "Tell us", ISSUES],
+            ].map(([t, d, cta, href]) => <div key={t} className="card"><h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{t}</h3><p style={{ color: "var(--muted)", lineHeight: 1.6, fontSize: 14 }}>{d}</p><a href={href} style={{ fontWeight: 700 }}>{cta} →</a></div>)}
+          </div>
+        </section>
+
+        <footer style={{ borderTop: "1px solid var(--line)", padding: "24px 5vw", color: "var(--muted)", fontSize: 13, display: "flex", gap: 22, flexWrap: "wrap" }}>
+          <span><b style={{ color: "var(--text)" }}>StepSignal</b> · Meta Global AI Developer Hackathon</span>
+          <span>Evidence, not guarantees. Data may be outdated; capture dates are shown everywhere.</span>
+          <Link href="/map">Live map</Link><a href={GH}>Source code</a>
+        </footer>
+      </main>
+    </>
   );
 }

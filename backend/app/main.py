@@ -132,7 +132,7 @@ def brief(req: BriefRequest):
     if len(routes) > 1:
         alt_geo = {"type": "Feature", "geometry": routes[1]["geometry"], "properties": {}}
         alt_note = "Alternate OSRM walking route shown for comparison. Compare its per-segment evidence — neither route is labelled accessible overall."
-    summary = (f"Route of {main['distance']/1000:.1f} km in Bandra West sampled into {len(segments)} stretches (~50 m each). "
+    summary = (f"Route of {main['distance']/1000:.1f} km from {olabel} to {dlabel} sampled into {len(segments)} stretches (~50 m each). "
                f"{counts.get('confirmed_barrier',0)} stretch(es) have confirmed barrier evidence, "
                f"{counts.get('observed_clear_of_barriers',0)} had no barrier visible in analysed evidence, and "
                f"{counts.get('uncertain',0)} remain uncertain. Uncertain means unassessed, not accessible.")
