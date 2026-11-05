@@ -22,7 +22,7 @@ const inp = { width: "100%", padding: 11, margin: "4px 0 10px", borderRadius: 7,
 
 export default function Home() {
   const [report, setReport] = useState<any>(null);
-  useEffect(() => { fetch(`${API}/api/report`).then(r => r.ok ? r.json() : null).then(async j => { if (j) return j; const r2 = await fetch(`${BASE}/report.json`); return r2.ok ? r2.json() : null; }).then(setReport).catch(() => {}); }, []);
+  useEffect(() => { (async () => { try { const r = await fetch(`${API}/api/report`); if (r.ok) { setReport(await r.json()); return; } } catch {} try { const r2 = await fetch(`${BASE}/report.json`); if (r2.ok) setReport(await r2.json()); } catch {} })(); }, []);
   const demoPhoto = report?.segments?.flatMap((s: any) => s.photos.map((p: any) => ({ ...p, seg: s.index + 1 }))).find((p: any) => p.signals && p.thumb_url);
   const demoSignals = demoPhoto ? Object.entries(demoPhoto.signals).filter(([, v]: any) => v.present !== null).slice(0, 6) : [];
   const stats = report ? [
