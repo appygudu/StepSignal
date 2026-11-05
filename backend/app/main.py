@@ -16,7 +16,11 @@ from .services.vision import analyse_photo, sam_segment
 from .services.continuity import classify, coverage
 
 app = FastAPI(title="StepSignal API")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3001", "http://localhost:3000"], allow_methods=["*"], allow_headers=["*"])
+# Configurable via CORS_ORIGINS (comma-separated). Defaults cover local dev
+# hosts — a browser on 127.0.0.1 is a different Origin than localhost and
+# was previously rejected, which silently broke the map for those users.
+_cors = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
 DB = Path(__file__).resolve().parents[2] / "stepsignal.db"
 
 def cache_get(iid):

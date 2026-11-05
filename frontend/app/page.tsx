@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const GH = "https://github.com/appygudu/StepSignal";
 const ISSUES = `${GH}/issues`;
 
@@ -21,7 +22,7 @@ const inp = { width: "100%", padding: 11, margin: "4px 0 10px", borderRadius: 7,
 
 export default function Home() {
   const [report, setReport] = useState<any>(null);
-  useEffect(() => { fetch(`${API}/api/report`).then(r => r.ok ? r.json() : null).then(setReport).catch(() => {}); }, []);
+  useEffect(() => { fetch(`${API}/api/report`).then(r => r.ok ? r.json() : null).then(async j => { if (j) return j; const r2 = await fetch(`${BASE}/report.json`); return r2.ok ? r2.json() : null; }).then(setReport).catch(() => {}); }, []);
   const demoPhoto = report?.segments?.flatMap((s: any) => s.photos.map((p: any) => ({ ...p, seg: s.index + 1 }))).find((p: any) => p.signals && p.thumb_url);
   const demoSignals = demoPhoto ? Object.entries(demoPhoto.signals).filter(([, v]: any) => v.present !== null).slice(0, 6) : [];
   const stats = report ? [
@@ -85,10 +86,10 @@ export default function Home() {
           <h2 id="film-h" style={{ fontSize: 30, margin: "0 0 6px" }}>Watch: StepSignal in 63 seconds</h2>
           <p style={{ color: "var(--text-2)", margin: "0 0 14px" }}>What it is, how it works, and why it never guesses — narrated, captioned, and built from a real analysed street photograph.</p>
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--shadow)", background: "#000" }}>
-            <video controls preload="metadata" poster="/explainer-poster.png" style={{ width: "100%", display: "block" }} aria-label="StepSignal explainer video, 63 seconds, narrated with captions">
-              <source src="/stepsignal-explainer.mp4" type="video/mp4" />
-              <track kind="captions" src="/explainer.en.vtt" srcLang="en" label="English" default />
-              Your browser cannot play this video. <a href="/stepsignal-explainer.mp4">Download the MP4</a> instead.
+            <video controls preload="metadata" poster={`${BASE}/explainer-poster.png`} style={{ width: "100%", display: "block" }} aria-label="StepSignal explainer video, 63 seconds, narrated with captions">
+              <source src={`${BASE}/stepsignal-explainer.mp4`} type="video/mp4" />
+              <track kind="captions" src={`${BASE}/explainer.en.vtt`} srcLang="en" label="English" default />
+              Your browser cannot play this video. <a href={`${BASE}/stepsignal-explainer.mp4`}>Download the MP4</a> instead.
             </video>
           </div>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Featuring a genuine Mapillary photograph (Bandra, captured 2025-09-11) analysed by Muse Spark. Voice: synthetic narration. No mock product footage.</p>

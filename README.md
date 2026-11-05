@@ -4,7 +4,11 @@
 
 **Street-level accessibility evidence for wheelchair users and people with mobility impairments.**
 
-Front page (about, how to use, FAQ, help desk, add-a-photo): http://localhost:3001 · Live evidence map: http://localhost:3001/map
+Live demo (GitHub Pages): https://appygudu.github.io/StepSignal/ · Explainer video: https://appygudu.github.io/StepSignal/#film-h (MP4 also in `frontend/public/stepsignal-explainer.mp4`)
+
+Local: front page http://localhost:3001 · Live evidence map: http://localhost:3001/map
+
+> GitHub Pages serves the static frontend. The verified Bandra evidence report is bundled (`report.json`), so the map, pins and video work there with no backend. Fresh route analysis and contributions need the FastAPI backend running (locally or self-hosted) — the app says so when it is unavailable.
 
 Screenshots / demo video: no hosted video yet — use the cover page and the [2-minute demo script](docs/DEMO.md) to record one. No screenshot or video link is claimed here because none has been published.
 

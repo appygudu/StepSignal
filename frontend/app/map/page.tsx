@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 type Sig = { present: boolean | null; confidence: number; evidence: string };
 type Photo = { image_id: string; thumb_url?: string; captured_at?: string; lat?: number; lon?: number; signals_source: string; sam_status: string; sam_mask_url?: string; signals?: Record<string, Sig> };
 type Seg = { segment_id: string; index: number; lat: number; lon: number; status: string; status_reason: string; osm: Record<string, string>; photos: Photo[]; observations: string[]; warnings: string[]; evidence_quality?: string; verification_required?: boolean };
@@ -68,13 +69,22 @@ export default function MapPage() {
   function startTimer() { const t0 = Date.now(); setElapsed(0); stageTimer.current = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 500); }
   function stopTimer() { if (stageTimer.current) clearInterval(stageTimer.current); }
 
+  const [mapError, setMapError] = useState("");
   useEffect(() => {
     if (!mapRef.current || mapObj.current) return;
-    const map = new maplibregl.Map({ container: mapRef.current, style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json", center: [20, 20], zoom: 2, pitch: 45, antialias: true, attributionControl: { compact: true } });
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-    map.addControl(new maplibregl.ScaleControl({}), "bottom-right");
-    map.on("dragstart", () => setFollow(false));
-    mapObj.current = map;
+    try {
+      const testCanvas = document.createElement("canvas");
+      if (!testCanvas.getContext("webgl2") && !testCanvas.getContext("webgl")) throw new Error("WebGL is not available in this browser.");
+      const map = new maplibregl.Map({ container: mapRef.current, style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json", center: [20, 20], zoom: 2, pitch: 45, antialias: true, attributionControl: { compact: true } });
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibregl.ScaleControl({}), "bottom-right");
+      map.on("dragstart", () => setFollow(false));
+      map.on("error", () => setMapError("Map tiles could not be loaded. Evidence cards in the panel remain fully usable."));
+      mapObj.current = map;
+    } catch (e: any) {
+      // Never white-screen the whole product because WebGL is unavailable.
+      setMapError(`Interactive map unavailable: ${e.message} The evidence panel on the left still shows every stretch, photograph and observation.`);
+    }
   }, []);
   useEffect(() => { mapObj.current?.easeTo({ pitch: tilt ? 55 : 0, duration: 500 }); }, [tilt]);
   useEffect(() => { const m = mapObj.current; if (m) m.setStyle(mapStyle === "voyager" ? "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json" : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"); }, [mapStyle]);
@@ -125,8 +135,13 @@ export default function MapPage() {
   function selectSeg(s: Seg, fly = false) { setSelected(s); if (fly) mapObj.current?.flyTo({ center: [s.lon, s.lat], zoom: 16.5, duration: 700 }); }
   async function loadReport() {
     setLoading(true); setError("");
-    try { const r = await fetch(`${API}/api/report`); const j = await r.json(); if (!r.ok) throw new Error(j.detail || "Verified example unavailable"); setData(j); setSelected(null); setOrigin("Bandra Station"); setDestination("Linking Road Bandra"); setOriginLabel("Example route — Bandra West, Mumbai"); }
-    catch (e: any) { setError(`${e.message}. Check the backend is running, then retry.`); } finally { setLoading(false); }
+    try {
+      let j: any = null;
+      try { const r = await fetch(`${API}/api/report`); if (r.ok) j = await r.json(); } catch {}
+      if (!j) { const r2 = await fetch(`${BASE}/report.json`); if (r2.ok) j = await r2.json(); } // static (GitHub Pages) fallback: same verified, reclassified report
+      if (!j) throw new Error("Verified example unavailable (backend offline and no cached copy)");
+      setData(j); setSelected(null); setOrigin("Bandra Station"); setDestination("Linking Road Bandra"); setOriginLabel("Example route — Bandra West, Mumbai");
+    } catch (e: any) { setError(`${e.message}. Check the backend is running, then retry.`); } finally { setLoading(false); }
   }
   useEffect(() => { loadReport(); }, []);
 
@@ -359,6 +374,7 @@ export default function MapPage() {
 
           <section id="map-section" style={{ position: "relative", minHeight: "60vh" }} aria-label="Interactive route map">
             <div ref={mapRef} style={{ position: "absolute", inset: 0 }} />
+            {mapError && <div role="alert" style={{ position: "absolute", inset: 16, zIndex: 4, background: "var(--surface)", border: "1px solid var(--barrier)", borderRadius: 10, padding: 20, maxHeight: 180 }}><b>Map unavailable.</b><p style={{ lineHeight: 1.6 }}>{mapError}</p></div>}
             <div style={{ position: "absolute", left: 14, top: 14, zIndex: 3, display: "flex", gap: 8, flexWrap: "wrap" }} role="group" aria-label="Map controls">
               <button className="chip" aria-pressed={tilt} onClick={() => setTilt(!tilt)}>{tilt ? "3D tilt on" : "Flat view"}</button>
               <button className="chip" onClick={useMyLocation}>Locate me</button>
