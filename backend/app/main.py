@@ -9,7 +9,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from .schemas import BriefRequest, BriefResponse, Segment, EvidencePhoto, Contribution
 from .services.routing import parse_place, get_route
-from .services.geo import sample_every
+from .services.geo import sample_every, estimated_walking_minutes
 from .services.osm_access import fetch_osm_access
 from .services.mapillary import fetch_photos
 from .services.vision import analyse_photo, sam_segment
@@ -82,19 +82,35 @@ def report():
     if not p.exists():
         raise HTTPException(404, "No verified report yet — run scripts/run_full_route.py")
     d = json.loads(p.read_text())
+    # Reclassify stored, already-analysed photos with the current authoritative
+    # engine. No AI calls — signals are reused exactly as stored.
+    segs = []
+    for s in d["segments"]:
+        seg = Segment(**s)
+        status, reason, obs, warns, quality, vreq = classify(seg.photos, seg.osm)
+        seg.status, seg.status_reason = status, reason
+        seg.evidence_quality, seg.verification_required = quality, vreq
+        if obs: seg.observations = obs
+        segs.append(seg)
+    from collections import Counter as _C
+    counts = dict(_C(s.status for s in segs))
+    pct, cov_note = coverage(segs)
+    d = {**d, "segments": segs, "counts": counts, "coverage_pct": pct, "coverage_note": cov_note}
     summary = (f"Verified evidence report for {d['origin']} to {d['destination']} ({d['distance_m']/1000:.1f} km). "
-               f"{d['counts'].get('confirmed_barrier',0)} stretch(es) have confirmed barrier evidence, "
-               f"{d['counts'].get('observed_clear_of_barriers',0)} had no barrier visible in analysed evidence, "
-               f"{d['counts'].get('uncertain',0)} remain uncertain. Uncertain means unassessed, not accessible.")
+               f"{counts.get('confirmed_barrier',0)} confirmed, {counts.get('possible_barrier',0)} possible, "
+               f"{counts.get('observed_clear_of_barriers',0)} with no barrier visible in analysed evidence, "
+               f"{counts.get('uncertain',0)} uncertain, {counts.get('unassessed',0)} unassessed. "
+               "Coverage means evidence availability, not accessibility.")
     return BriefResponse(origin_label=d["origin"], destination_label=d["destination"],
         distance_m=d["distance_m"], duration_min=d["duration_min"], route_geojson=d["route_geojson"],
         alternate_geojson=d.get("alternate_geojson"),
         alternate_note="Alternate route shown for comparison of per-segment evidence. Neither route is labelled accessible overall." if d.get("alternate_geojson") else None,
-        segments=[Segment(**s) for s in d["segments"]], coverage_pct=d["coverage_pct"],
+        segments=segs, coverage_pct=d["coverage_pct"],
         coverage_note=d["coverage_note"], counts=d["counts"], summary=summary,
         warnings=d.get("warnings", []), integrations=integrations())
 
-ANALYSIS_VERSION = "v2"
+from .services.vision import MODEL as _MODEL, PROMPT_VERSION as _PV, SCHEMA_VERSION as _SV
+ANALYSIS_VERSION = f"{_MODEL}:{_PV}:{_SV}"
 
 def _cache_key(image_id): return f"{ANALYSIS_VERSION}:{image_id}"
 
@@ -110,7 +126,7 @@ def stage_route(req: BriefRequest):
         raise HTTPException(502, str(e))
     m = routes[0]; samples = sample_every(m["geometry"]["coordinates"], 50.0)
     return {"origin_label": olabel, "destination_label": dlabel, "distance_m": m["distance"],
-            "duration_min": round(m["duration"]/60, 1),
+            "duration_min": estimated_walking_minutes(m["distance"]), "duration_source": "estimated_walking_speed_4.5kmh (OSRM duration not used as a walking estimate)",
             "route_geojson": {"type": "Feature", "geometry": m["geometry"], "properties": {}},
             "alternate_geojson": {"type": "Feature", "geometry": routes[1]["geometry"], "properties": {}} if len(routes) > 1 else None,
             "samples": [{"index": i, "lat": la, "lon": lo} for i, (la, lo) in enumerate(samples)],
@@ -139,9 +155,17 @@ def stage_discover(req: _SamplesReq):
 
 @app.post("/api/stage/analyse")
 def stage_analyse(req: _AnalyseReq):
-    """Stage 3: Muse Spark per photo, 5-way parallel, versioned SQLite cache.
-    Cached photos make no API call. Returns per-photo signals or null (failed)."""
+    """Stage 3: Muse Spark per photo, bounded parallel, versioned SQLite cache.
+    Cached photos make no API call. Returns per-photo signals or null (failed).
+    Cost protection: hard per-request photo cap (env AI_MAX_PHOTOS_PER_REQUEST,
+    default 30). Oversized requests are rejected, never silently billed."""
     import time; t0 = time.perf_counter()
+    max_photos = int(os.environ.get("AI_MAX_PHOTOS_PER_REQUEST", "30"))
+    if len(req.photos) > max_photos:
+        raise HTTPException(413, f"Too many photographs in one request ({len(req.photos)} > {max_photos}). Analyse in smaller batches so AI spend stays explicit.")
+    for p in req.photos:
+        if not p.get("image_id") or not p.get("thumb_url"):
+            raise HTTPException(400, "Each photo requires image_id and thumb_url")
     from .schemas import ImageAccessSignals
     from concurrent.futures import ThreadPoolExecutor
     def _one(p):
@@ -156,6 +180,23 @@ def stage_analyse(req: _AnalyseReq):
             results[iid] = sig.model_dump() if sig else None; stats[how] += 1
     return {"results": results, "stats": stats,
             "timings": {"analysis_s": round(time.perf_counter()-t0, 2)}}
+
+class _ClassifyReq(_BM):
+    segments: list
+
+@app.post("/api/stage/classify")
+def stage_classify(req: _ClassifyReq):
+    """Authoritative stretch classification (backend continuity engine).
+    Frontend must display these statuses, not recompute its own."""
+    from .schemas import EvidencePhoto as _EP
+    out = []
+    for s in req.segments:
+        photos = [_EP(**p) for p in s.get("photos", [])]
+        status, reason, obs, warns, quality, verify_req = classify(photos, s.get("osm", {}))
+        out.append({"index": s["index"], "status": status, "status_reason": reason,
+                    "observations": obs, "warnings": warns, "evidence_quality": quality,
+                    "verification_required": verify_req})
+    return {"classifications": out}
 
 @app.post("/api/brief", response_model=BriefResponse)
 def brief(req: BriefRequest):
@@ -200,10 +241,11 @@ def brief(req: BriefRequest):
             src = "muse_spark" if sig else "unavailable"
             sam_status, mask_url = sam_segment(p) if sig else ("unavailable", None)
             photos.append(EvidencePhoto(**p, signals=sig, signals_source=src, sam_status=sam_status, sam_mask_url=mask_url))
-        status, reason, obs, warns = classify(photos, osm_by_idx.get(i, {}))
+        status, reason, obs, warns, quality, verify_req = classify(photos, osm_by_idx.get(i, {}))
         segments.append(Segment(segment_id=f"seg-{i}", index=i, lat=lat, lon=lon, status=status,
                                 status_reason=reason, osm=osm_by_idx.get(i, {}), photos=photos,
-                                observations=obs, warnings=warns))
+                                observations=obs, warnings=warns, evidence_quality=quality,
+                                verification_required=verify_req))
     pct, cov_note = coverage(segments)
     from collections import Counter
     counts = dict(Counter(s.status for s in segments))
@@ -216,7 +258,7 @@ def brief(req: BriefRequest):
                f"{counts.get('observed_clear_of_barriers',0)} had no barrier visible in analysed evidence, and "
                f"{counts.get('uncertain',0)} remain uncertain. Uncertain means unassessed, not accessible.")
     return BriefResponse(origin_label=olabel, destination_label=dlabel, distance_m=main["distance"],
-        duration_min=round(main["duration"]/60, 1),
+        duration_min=estimated_walking_minutes(main["distance"]),
         route_geojson={"type": "Feature", "geometry": main["geometry"], "properties": {}},
         alternate_geojson=alt_geo, alternate_note=alt_note, segments=segments,
         coverage_pct=pct, coverage_note=cov_note, counts=counts, summary=summary,

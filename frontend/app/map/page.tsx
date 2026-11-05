@@ -7,11 +7,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 type Sig = { present: boolean | null; confidence: number; evidence: string };
 type Photo = { image_id: string; thumb_url?: string; captured_at?: string; lat?: number; lon?: number; signals_source: string; sam_status: string; sam_mask_url?: string; signals?: Record<string, Sig> };
-type Seg = { segment_id: string; index: number; lat: number; lon: number; status: string; status_reason: string; osm: Record<string, string>; photos: Photo[]; observations: string[]; warnings: string[] };
+type Seg = { segment_id: string; index: number; lat: number; lon: number; status: string; status_reason: string; osm: Record<string, string>; photos: Photo[]; observations: string[]; warnings: string[]; evidence_quality?: string; verification_required?: boolean };
 type Brief = { summary: string; distance_m: number; duration_min: number; route_geojson: any; alternate_geojson?: any; alternate_note?: string; segments: Seg[]; coverage_pct: number; coverage_note: string; counts: Record<string, number>; limits: string[]; warnings: string[]; integrations: Record<string, string> };
 
-const colour = (s: string) => s === "confirmed_barrier" ? "#e4572e" : s === "observed_clear_of_barriers" ? "#2fa58f" : "#93a3b5";
-const label = (s: string) => s === "confirmed_barrier" ? "Confirmed barrier" : s === "observed_clear_of_barriers" ? "No barrier visible in evidence" : "Uncertain — insufficient evidence";
+const colour = (s: string) => s === "confirmed_barrier" ? "#e4572e" : s === "possible_barrier" ? "#d97706" : s === "observed_clear_of_barriers" ? "#2fa58f" : "#93a3b5";
+const label = (s: string) => s === "confirmed_barrier" ? "Confirmed barrier" : s === "possible_barrier" ? "Possible barrier — verification needed" : s === "observed_clear_of_barriers" ? "No barrier visible in analysed evidence" : s === "unassessed" ? "Unassessed — no analysed evidence" : "Uncertain — insufficient evidence";
 const BARRIERS = ["steps_or_staircase", "pavement_obstruction", "sidewalk_discontinuity", "surface_damage", "crossing_barrier"] as const;
 const pretty = (k: string) => k.replaceAll("_", " ");
 function hits(s: Seg, kind?: string) {
@@ -22,16 +22,13 @@ function hits(s: Seg, kind?: string) {
   }
   return out.sort((a, b) => b.conf - a.conf);
 }
-function classifySeg(photos: Photo[], osm: Record<string, string>) {
-  let barrier = false, looked = false;
-  for (const p of photos) {
-    if (!p.signals) continue; looked = true;
-    for (const k of BARRIERS) { const v = p.signals[k]; if (v?.present === true && v.confidence >= 0.6) barrier = true; }
-  }
-  if (osm?.kerb === "no" || osm?.barrier) barrier = true;
-  if (barrier) return { status: "confirmed_barrier", reason: "Barrier evidence at confidence ≥ 0.6 in the analysed evidence below." };
-  if (looked) return { status: "observed_clear_of_barriers", reason: "No barrier was visible in the analysed photo evidence. This is not a claim of full accessibility." };
-  return { status: "uncertain", reason: photos.length ? "Photograph present but not yet analysed — no claim is made." : "No street-level photograph retrieved for this stretch — unassessed, not accessible." };
+async function backendClassify(segs: Seg[]): Promise<Seg[]> {
+  try {
+    const r = await fetch(`${API}/api/stage/classify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ segments: segs.map(s => ({ index: s.index, photos: s.photos, osm: s.osm })) }) });
+    const j = await r.json(); if (!r.ok) return segs;
+    const byIdx: Record<number, any> = {}; (j.classifications || []).forEach((c: any) => { byIdx[c.index] = c; });
+    return segs.map(s => byIdx[s.index] ? { ...s, status: byIdx[s.index].status, status_reason: byIdx[s.index].status_reason, observations: byIdx[s.index].observations || s.observations, warnings: byIdx[s.index].warnings || s.warnings, evidence_quality: byIdx[s.index].evidence_quality, verification_required: byIdx[s.index].verification_required } as Seg : s);
+  } catch { return segs; }
 }
 function qualityOf(v?: Sig): string {
   if (!v || v.present === null) return "Unclear — insufficient visual evidence";
@@ -117,7 +114,8 @@ export default function MapPage() {
         markers.current.push(new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([s.lon, s.lat]).addTo(map));
       });
       const c = data.route_geojson.geometry.coordinates;
-      map.fitBounds(c.reduce((b: any, x: any) => b.extend(x), new maplibregl.LngLatBounds(c[0], c[0])), { padding: 60, pitch: tilt ? 55 : 0, duration: 800 });
+      const key = `${data.distance_m}:${c.length}:${c[0]}`;
+      if ((map as any)._routeKey !== key) { (map as any)._routeKey = key; map.fitBounds(c.reduce((b: any, x: any) => b.extend(x), new maplibregl.LngLatBounds(c[0], c[0])), { padding: 60, pitch: tilt ? 55 : 0, duration: 800 }); }
     };
     if (map.loaded()) draw(); else map.on("load", draw);
     map.on("styledata", draw);
@@ -169,7 +167,7 @@ export default function MapPage() {
     const counts: Record<string, number> = {}; segments.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
     const assessed = segments.filter(s => s.status !== "uncertain").length;
     const pct = segments.length ? Math.round(1000 * assessed / segments.length) / 10 : 0;
-    return { summary: `Route of ${(route.distance_m / 1000).toFixed(1)} km from ${route.origin_label} to ${route.destination_label} sampled into ${segments.length} stretches (~50 m each). ${counts.confirmed_barrier || 0} stretch(es) have confirmed barrier evidence, ${counts.observed_clear_of_barriers || 0} had no barrier visible in analysed evidence, and ${counts.uncertain || 0} remain uncertain.${partial ? " Analysis is partial — some photographs failed and can be retried." : ""}`,
+    return { summary: `Route of ${(route.distance_m / 1000).toFixed(1)} km from ${route.origin_label} to ${route.destination_label} sampled into ${segments.length} stretches (~50 m each). ${counts.confirmed_barrier || 0} confirmed, ${counts.possible_barrier || 0} possible, ${counts.observed_clear_of_barriers || 0} with no barrier visible in analysed evidence, ${counts.uncertain || 0} uncertain, ${counts.unassessed || 0} unassessed.${partial ? " Analysis is partial — some photographs failed and can be retried." : ""}`,
       distance_m: route.distance_m, duration_min: route.duration_min, route_geojson: route.route_geojson, alternate_geojson: route.alternate_geojson,
       alternate_note: route.alternate_geojson ? "Alternate OSRM walking route shown for comparison. Compare its per-segment evidence — neither route is labelled accessible overall." : undefined,
       segments, coverage_pct: pct, coverage_note: `Evidence coverage: ${assessed} of ${segments.length} stretches have analysable photo or map evidence. Coverage means evidence availability, not accessibility.`,
@@ -181,10 +179,13 @@ export default function MapPage() {
     const j = await r.json(); if (!r.ok) throw new Error(j.detail || "AI analysis stage failed");
     const failed = photos.filter(p => !j.results[p.image_id]); setFailedPhotos(failed);
     setProg({ found: photos.length, analysed: Object.values(j.results).filter(Boolean).length, awaiting: 0, failed: failed.length });
-    const segs = base.segments.map(s => {
-      const ph = s.photos.map(p => ({ ...p, signals: j.results[p.image_id] || undefined, signals_source: j.results[p.image_id] ? "muse_spark" : "unavailable" }));
-      const c = classifySeg(ph, s.osm); return { ...s, photos: ph, status: c.status, status_reason: c.reason };
+    let segs = base.segments.map(s => {
+      const ph = s.photos.map(p => (p.image_id in j.results)
+        ? { ...p, signals: j.results[p.image_id] || undefined, signals_source: j.results[p.image_id] ? "muse_spark" : "unavailable" }
+        : p); // merge: photos not in this batch keep their existing analysis (retry safety)
+      return { ...s, photos: ph };
     });
+    segs = await backendClassify(segs);
     const brief = composeBrief(route, segs, warnings, failed.length > 0); setData(brief);
     setStage(failed.length ? "partial" : "summary"); return brief;
   }
@@ -202,7 +203,8 @@ export default function MapPage() {
       r = await fetch(`${API}/api/stage/discover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ samples: route.samples }) });
       const disc = await r.json(); if (!r.ok) throw new Error(disc.detail || "Evidence discovery failed");
       const photos: any[] = [];
-      segs = segs.map(s => { const ph = (disc.photos_by_index[String(s.index)] || []).map((p: any) => ({ ...p, signals_source: "unavailable", sam_status: "unavailable" })); photos.push(...ph); const osm = disc.osm_by_index[String(s.index)] || {}; const c = classifySeg(ph, osm); return { ...s, photos: ph, osm, status: c.status, status_reason: c.reason }; });
+      segs = segs.map(s => { const ph = (disc.photos_by_index[String(s.index)] || []).map((p: any) => ({ ...p, signals_source: "unavailable", sam_status: "unavailable" })); photos.push(...ph); const osm = disc.osm_by_index[String(s.index)] || {}; return { ...s, photos: ph, osm }; });
+      segs = await backendClassify(segs);
       setProg(p => ({ ...p, found: photos.length }));
       setData(composeBrief(route, segs, disc.warnings || [], false));
       if (photos.length === 0) { setStage("summary"); return; }
@@ -301,7 +303,7 @@ export default function MapPage() {
               <section aria-labelledby="ev-h">
                 <h2 id="ev-h" style={{ fontSize: 16, margin: "0 0 10px" }}>Evidence by stretch</h2>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }} role="group" aria-label="Filter by status">
-                  {[["all", "All"], ["confirmed_barrier", "Barriers"], ["observed_clear_of_barriers", "No barrier visible"], ["uncertain", "Uncertain"]].map(([k, t]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{t}</button>)}
+                  {[["all", "All"], ["confirmed_barrier", "Confirmed"], ["possible_barrier", "Possible"], ["observed_clear_of_barriers", "No barrier visible"], ["uncertain", "Uncertain"], ["unassessed", "Unassessed"]].map(([k, t]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{t}</button>)}
                 </div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }} role="group" aria-label="Filter by observation type">
                   <button className="chip" aria-pressed={kindFilter === "all"} onClick={() => setKindFilter("all")}>All observations</button>

@@ -41,6 +41,8 @@ class Segment(BaseModel):
     photos: List[EvidencePhoto] = []
     observations: List[str] = []
     warnings: List[str] = []
+    evidence_quality: str = "none"  # high | medium | low | none
+    verification_required: bool = True
 
 class Contribution(BaseModel):
     location_text: str

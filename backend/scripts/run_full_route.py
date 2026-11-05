@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from app.main import cache_get, cache_put
+from app.main import cache_get, cache_put, _cache_key
 from app.schemas import ImageAccessSignals
 from app.services.routing import parse_place, get_route
 from app.services.geo import sample_every
@@ -35,12 +35,12 @@ def main():
     results, stats = {}, {"cached": 0, "success": 0, "failed": 0, "calls": 0}
     def work(item):
         i, p = item
-        cached = cache_get("v2:"+p["image_id"])
+        cached = cache_get(_cache_key(p["image_id"]))
         if cached:
             return p["image_id"], ImageAccessSignals(**cached), "cached"
         sig, src = analyse_photo(p)
         if sig:
-            cache_put("v2:"+p["image_id"], sig.model_dump())
+            cache_put(_cache_key(p["image_id"]), sig.model_dump())
             return p["image_id"], sig, "analysed"
         return p["image_id"], None, "failed"
 
@@ -63,10 +63,11 @@ def main():
             sig = results.get(p["image_id"])
             photos.append(EvidencePhoto(**p, signals=sig,
                 signals_source="muse_spark" if sig else "unavailable"))
-        status, reason, obs, warns = classify(photos, osm_by_idx.get(i, {}))
+        status, reason, obs, warns, quality, verify_req = classify(photos, osm_by_idx.get(i, {}))
         seg = Segment(segment_id=f"seg-{i}", index=i, lat=lat, lon=lon, status=status,
                       status_reason=reason, osm=osm_by_idx.get(i, {}), photos=photos,
-                      observations=obs, warnings=warns)
+                      observations=obs, warnings=warns, evidence_quality=quality,
+                      verification_required=verify_req)
         segments.append(seg)
     pct, cov_note = coverage(segments)
     from collections import Counter

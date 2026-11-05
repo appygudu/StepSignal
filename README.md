@@ -69,7 +69,7 @@ Key engineering details: images are embedded as base64 (the Meta Model API canno
 ## Tests & CI
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests -q   # 10 tests
+cd backend && .venv/bin/python -m pytest tests -q   # 30 tests
 cd frontend && npm run build
 ```
 

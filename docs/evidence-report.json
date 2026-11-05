@@ -2,7 +2,7 @@
  "origin": "Bandra Station",
  "destination": "Linking Road Bandra",
  "distance_m": 1166.1,
- "duration_min": 1.5,
+ "duration_min": 15.5,
  "route_geojson": {
   "type": "Feature",
   "geometry": {

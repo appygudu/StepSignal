@@ -15,6 +15,8 @@ def _image_data_url(image_url: str):
         return None
 
 MODEL = "muse-spark-1.3"
+PROMPT_VERSION = "acc-v2"
+SCHEMA_VERSION = "signals-v2"
 VISION_PROMPT = """Analyse this street-level photograph for wheelchair and mobility accessibility evidence.
 Return ONLY JSON with keys: steps_or_staircase, kerb_ramp, tactile_paving, pavement_obstruction,
 sidewalk_discontinuity, pedestrian_crossing, crossing_barrier, surface_damage, visible_ramp, steep_gradient_suspected.
@@ -48,7 +50,18 @@ def analyse_photo(photo: dict):
             print(f"[vision] Muse Spark HTTP {r.status_code}: {r.text[:300]}", flush=True)
             return None, "unavailable"
         text = r.json()["choices"][0]["message"]["content"]
-        return ImageAccessSignals(**json.loads(text)), "muse_spark"
+        try:
+            return ImageAccessSignals(**json.loads(text)), "muse_spark"
+        except Exception:
+            # One bounded retry for malformed JSON — never fabricate a fallback.
+            print("[vision] malformed JSON, retrying once", flush=True)
+            r2 = httpx.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"},
+                json={"model": model, "temperature": 0, "messages": [{"role": "user", "content": [
+                    {"type": "text", "text": VISION_PROMPT + "\nReturn valid JSON only."},
+                    {"type": "image_url", "image_url": {"url": data_url}}]}]}, timeout=60)
+            if r2.status_code != 200:
+                return None, "unavailable"
+            return ImageAccessSignals(**json.loads(r2.json()["choices"][0]["message"]["content"])), "muse_spark"
     except Exception as e:
         print(f"[vision] Muse Spark error: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None, "unavailable"

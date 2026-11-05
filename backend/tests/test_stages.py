@@ -7,7 +7,8 @@ from app.main import app, _cache_key
 client = TestClient(app)
 
 def test_cache_key_is_versioned():
-    assert _cache_key("123") == "v2:123"
+    # Cache is invalidated by model + prompt + schema version.
+    assert _cache_key("123").endswith(":123") and "muse-spark" in _cache_key("123")
 
 def test_stage_route_shape(monkeypatch):
     import app.main as m
