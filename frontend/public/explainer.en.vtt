@@ -1,0 +1,29 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.570
+Know what lies between you and your destination.
+
+2
+00:00:02.920 --> 00:00:10.380
+A route can look perfect on a map, and fail at a single kerb. For wheelchair users, one blocked pavement can end the whole journey.
+
+3
+00:00:10.730 --> 00:00:18.660
+StepSignal checks the real street. We sample your route every fifty metres, and retrieve actual street level photographs for every stretch.
+
+4
+00:00:19.010 --> 00:00:32.650
+Then Meta Muse Spark reads each photograph, identifying steps, kerb ramps, tactile paving, obstructions and surface damage. Every observation carries a confidence score, and what the AI cannot tell stays unknown.
+
+5
+00:00:33.000 --> 00:00:44.100
+We never guess. Findings are confirmed, possible, uncertain or unassessed, and every claim links to its photograph and capture date. Missing evidence is never upgraded to accessible.
+
+6
+00:00:44.450 --> 00:00:55.430
+On our verified Bandra route, thirty two real photographs found eleven stretches with barriers, at sixty six point seven percent evidence coverage. The rest stayed honestly uncertain.
+
+7
+00:00:55.780 --> 00:01:02.790
+Evidence, not guesses. Open the live map, click a pin, and judge the photograph yourself. StepSignal.

@@ -81,6 +81,19 @@ export default function Home() {
           </div>
         </section>
 
+        <section aria-labelledby="film-h" style={{ padding: "8px 5vw 36px", maxWidth: 1180, margin: "0 auto" }}>
+          <h2 id="film-h" style={{ fontSize: 30, margin: "0 0 6px" }}>Watch: StepSignal in 63 seconds</h2>
+          <p style={{ color: "var(--text-2)", margin: "0 0 14px" }}>What it is, how it works, and why it never guesses — narrated, captioned, and built from a real analysed street photograph.</p>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--shadow)", background: "#000" }}>
+            <video controls preload="metadata" poster="/explainer-poster.png" style={{ width: "100%", display: "block" }} aria-label="StepSignal explainer video, 63 seconds, narrated with captions">
+              <source src="/stepsignal-explainer.mp4" type="video/mp4" />
+              <track kind="captions" src="/explainer.en.vtt" srcLang="en" label="English" default />
+              Your browser cannot play this video. <a href="/stepsignal-explainer.mp4">Download the MP4</a> instead.
+            </video>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>Featuring a genuine Mapillary photograph (Bandra, captured 2025-09-11) analysed by Muse Spark. Voice: synthetic narration. No mock product footage.</p>
+        </section>
+
         <section aria-labelledby="explore-h" style={{ padding: "8px 5vw 36px", maxWidth: 1180, margin: "0 auto" }}>
           <h2 id="explore-h" style={{ fontSize: 30, margin: "0 0 6px" }}>Explore StepSignal</h2>
           <p style={{ color: "var(--text-2)", margin: "0 0 14px" }}>The actual product, embedded — search anywhere in the world, use your location, click the evidence pins.</p>
