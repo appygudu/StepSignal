@@ -241,7 +241,7 @@ export default function MapPage() {
         <header style={{ display: "flex", alignItems: "center", gap: 20, padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "#10161d", flexWrap: "wrap" }}>
           <Link href="/" style={{ color: "var(--text)", textDecoration: "none" }}><strong style={{ fontSize: 20 }}>StepSignal</strong></Link>
           <nav aria-label="Primary" style={{ display: "flex", gap: 16, fontSize: 14, flexWrap: "wrap" }}>
-            <Link href="/" style={{ color: "var(--text-2)" }}>Home</Link><a href="/#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="/#faq" style={{ color: "var(--text-2)" }}>FAQ</a><a href="/#contribute" style={{ color: "var(--text-2)" }}>Add a photo</a><a href="/#help" style={{ color: "var(--text-2)" }}>Help desk</a>
+            <Link href="/" style={{ color: "var(--text-2)" }}>Home</Link><a href={`${BASE}/#how`} style={{ color: "var(--text-2)" }}>How it works</a><a href={`${BASE}/#faq`} style={{ color: "var(--text-2)" }}>FAQ</a><a href={`${BASE}/#contribute`} style={{ color: "var(--text-2)" }}>Add a photo</a><a href={`${BASE}/#help`} style={{ color: "var(--text-2)" }}>Help desk</a>
           </nav>
           <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--muted)" }} role="status">{tracking ? "● Live tracking active" : "Tracking off"} · {allPhotos.length} photos in view</span>
         </header>

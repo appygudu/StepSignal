@@ -49,7 +49,7 @@ export default function Home() {
         <header style={{ display: "flex", alignItems: "center", gap: 24, padding: "14px 5vw", borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "rgba(12,16,21,.96)", zIndex: 20 }}>
           <strong style={{ fontSize: 20, letterSpacing: ".2px" }}>StepSignal</strong>
           <nav aria-label="Primary" style={{ display: "flex", gap: 18, fontSize: 14, flexWrap: "wrap" }}>
-            <a href="/" style={{ color: "var(--text-2)" }}>Home</a><Link href="/map" style={{ color: "var(--text-2)" }}>Explore</Link><a href="#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="#ai" style={{ color: "var(--text-2)" }}>AI analysis</a><a href="#contribute" style={{ color: "var(--text-2)" }}>Contribute</a><a href="#about" style={{ color: "var(--text-2)" }}>About</a>
+            <a href={`${BASE}/`} style={{ color: "var(--text-2)" }}>Home</a><Link href="/map" style={{ color: "var(--text-2)" }}>Explore</Link><a href="#how" style={{ color: "var(--text-2)" }}>How it works</a><a href="#ai" style={{ color: "var(--text-2)" }}>AI analysis</a><a href="#contribute" style={{ color: "var(--text-2)" }}>Contribute</a><a href="#about" style={{ color: "var(--text-2)" }}>About</a>
           </nav>
           <Link className="btn btn-primary" href="/map" style={{ marginLeft: "auto", padding: "10px 16px" }}>Explore a route</Link>
         </header>
@@ -99,7 +99,7 @@ export default function Home() {
           <h2 id="explore-h" style={{ fontSize: 30, margin: "0 0 6px" }}>Explore StepSignal</h2>
           <p style={{ color: "var(--text-2)", margin: "0 0 14px" }}>The actual product, embedded — search anywhere in the world, use your location, click the evidence pins.</p>
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--shadow)" }}>
-            <iframe src="/map" title="StepSignal interactive evidence map" style={{ width: "100%", height: 560, border: 0, display: "block" }} loading="lazy" />
+            <iframe src={`${BASE}/map/`} title="StepSignal interactive evidence map" style={{ width: "100%", height: 560, border: 0, display: "block" }} loading="lazy" />
           </div>
         </section>
 
